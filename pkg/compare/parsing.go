@@ -7,12 +7,14 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"os"
 	"path"
 	"path/filepath"
-	"sigs.k8s.io/yaml"
 	"text/template"
+
+	"github.com/openshift/kube-compare/pkg/templatehelpers"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"sigs.k8s.io/yaml"
 )
 
 type Reference struct {
@@ -135,13 +137,13 @@ func parseTemplates(templatePaths []string, functionTemplates []string, fsys fs.
 	var templates []*template.Template
 	var errs []error
 	for _, temp := range templatePaths {
-		parsedTemp, err := template.New(path.Base(temp)).Funcs(FuncMap()).ParseFS(fsys, temp)
+		parsedTemp, err := template.New(path.Base(temp)).Funcs(templatehelpers.FuncMap()).ParseFS(fsys, temp)
 		if err != nil {
 			errs = append(errs, fmt.Errorf(templatesCantBeParsed, temp, err))
 			continue
 		}
 		// recreate template with new name that includes path from reference root:
-		parsedTemp, _ = template.New(temp).Funcs(FuncMap()).AddParseTree(temp, parsedTemp.Tree)
+		parsedTemp, _ = template.New(temp).Funcs(templatehelpers.FuncMap()).AddParseTree(temp, parsedTemp.Tree)
 		if len(functionTemplates) > 0 {
 			parsedTemp, err = parsedTemp.ParseFS(fsys, functionTemplates...)
 			if err != nil {
