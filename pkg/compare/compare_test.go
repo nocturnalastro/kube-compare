@@ -329,6 +329,24 @@ error code:2`),
 			outputFormat: Json,
 			checks:       defaultChecks,
 		},
+		{
+			name:         "Allow Undefined Extras",
+			mode:         []Mode{DefaultMode},
+			outputFormat: Json,
+			checks:       defaultChecks,
+		},
+		{
+			name:         "Check No Overwrite",
+			mode:         []Mode{DefaultMode},
+			outputFormat: Json,
+			checks:       defaultChecks,
+		},
+		{
+			name:         "Check Probes Merge",
+			mode:         []Mode{DefaultMode},
+			outputFormat: Json,
+			checks:       defaultChecks,
+		},
 	}
 	tf := cmdtesting.NewTestFactory()
 	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)

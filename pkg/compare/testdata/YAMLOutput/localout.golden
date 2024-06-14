@@ -6,6 +6,7 @@ Diffs:
     TEMP/apps-v1_deployment_kubernetes-dashboard_kubernetes-dashboard\tDATE\n+++ TEMP/apps-v1_deployment_kubernetes-dashboard_kubernetes-dashboard\tDATE\n@@ -14,7 +14,7 @@\n   template:\n     metadata:\n       labels:\n-
     \       k8s-app: kubernetes-dashboard\n+        k8s-app: kubernetes-dashboard-diff\n
     \    spec:\n       containers:\n       - args:\n"
+  Patch: '{"spec":{"template":{"metadata":{"labels":{"k8s-app":"kubernetes-dashboard-diff"}}}}}'
 Summary:
   NumDiffCRs: 1
   NumMissing: 1

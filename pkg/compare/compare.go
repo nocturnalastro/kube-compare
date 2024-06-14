@@ -15,6 +15,7 @@ import (
 	"strings"
 	"text/template"
 
+	jsonpatch "github.com/evanphx/json-patch"
 	"github.com/gosimple/slug"
 	"github.com/openshift/kube-compare/pkg/groups"
 	"github.com/samber/lo"
@@ -411,6 +412,40 @@ func runDiff(obj diff.Object, streams genericiooptions.IOStreams, showManagedFie
 	return diffOutput, nil
 }
 
+func mergeManifests(localRef, clusterCR *unstructured.Unstructured) (updateLocalRef *unstructured.Unstructured, patch []byte, err error) {
+	localRefData, err := json.Marshal(localRef)
+	if err != nil {
+		return nil, []byte{}, fmt.Errorf("failed to marshal reference CR: %w", err)
+	}
+
+	clusterCRData, err := json.Marshal(clusterCR.Object)
+	if err != nil {
+		return nil, []byte{}, fmt.Errorf("failed to marshal cluster CR: %w", err)
+	}
+
+	localRefUpdatedData, err := jsonpatch.MergePatch(clusterCRData, localRefData)
+	if err != nil {
+		return nil, []byte{}, fmt.Errorf("failed to merge cluster and reference CRs: %w", err)
+	}
+
+	// This will be used later to enable user patches to be passed back in localRefUpdatedData, _ = jsonpatch.MergePatch(localRefUpdatedData, acceptableDiff)
+
+	localRefUpdatedObj := make(map[string]any)
+	err = json.Unmarshal(localRefUpdatedData, &localRefUpdatedObj)
+	if err != nil {
+		return nil, []byte{}, fmt.Errorf("failed to unmarshal updated manifest: %w", err)
+	}
+
+	localRefUpdated := &unstructured.Unstructured{Object: localRefUpdatedObj}
+
+	patch, err = jsonpatch.CreateMergePatch(localRefUpdatedData, clusterCRData)
+	if err != nil {
+		return localRefUpdated, []byte{}, fmt.Errorf("failed to create patch: %w", err)
+	}
+
+	return localRefUpdated, patch, nil
+}
+
 // Run uses the factory to parse file arguments (in case of local mode) or gather all cluster resources matching
 // templates types. For each Resource it finds the matching Resource template and
 // injects, compares, and runs against differ.
@@ -438,9 +473,9 @@ func (o *Options) Run() error {
 
 	err := r.Visit(func(info *resource.Info, _ error) error { // ignoring previous errors
 		clusterCRMapping, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(info.Object)
-		clusterCR := unstructured.Unstructured{Object: clusterCRMapping}
+		clusterCR := &unstructured.Unstructured{Object: clusterCRMapping}
 
-		temp, err := o.correlator.Match(&clusterCR)
+		temp, err := o.correlator.Match(clusterCR)
 		if err != nil {
 			return err
 		}
@@ -450,9 +485,18 @@ func (o *Options) Run() error {
 			return err
 		}
 
+		updatedLocalRef, patch, err := mergeManifests(localRef, clusterCR)
+		if err != nil {
+			klog.Errorf("failed to properly merge the manifests for %s some diffs may be incorrect: %s", apiKindNamespaceName(clusterCR), err)
+		}
+
+		if updatedLocalRef != nil {
+			localRef = updatedLocalRef
+		}
+
 		obj := InfoObject{
 			injectedObjFromTemplate: localRef,
-			clusterObj:              &clusterCR,
+			clusterObj:              clusterCR,
 			FieldsToOmit:            o.ref.FieldsToOmit,
 		}
 		diffOutput, err := runDiff(obj, o.IOStreams, o.ShowManagedFields)
@@ -462,7 +506,8 @@ func (o *Options) Run() error {
 		if diffOutput.Len() > 0 {
 			numDiffCRs += 1
 		}
-		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.Name(), CRName: apiKindNamespaceName(&clusterCR)})
+
+		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.Name(), CRName: apiKindNamespaceName(clusterCR), Patch: string(patch)})
 		return err
 	})
 	if err != nil {
@@ -523,6 +568,7 @@ type DiffSum struct {
 	DiffOutput         string `json:"DiffOutput"`
 	CorrelatedTemplate string `json:"CorrelatedTemplate"`
 	CRName             string `json:"CRName"`
+	Patch              string
 }
 
 func (s DiffSum) String() string {
