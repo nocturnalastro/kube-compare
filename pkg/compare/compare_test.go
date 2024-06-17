@@ -51,21 +51,25 @@ const (
 	matchRegex  checkType = "regex"
 )
 
+type checkSuffix string
+
+const (
+	outSuffix   checkSuffix = "out.golden"
+	errSuffix   checkSuffix = "err.golden"
+	patchSuffix checkSuffix = "patch.golden"
+)
+
 type Check struct {
 	checkType checkType
 	value     string
-	checkOut  bool
+	suffix    checkSuffix
 }
 
 func (c Check) getPath(test Test, mode Mode) string {
 	if c.value != "" {
 		return path.Join(test.getTestDir(), c.value)
 	}
-	suffix := "err.golden"
-	if c.checkOut {
-		suffix = "out.golden"
-	}
-	return path.Join(test.getTestDir(), string(mode.crSource)+suffix)
+	return path.Join(test.getTestDir(), string(mode.crSource)+string(c.suffix))
 }
 
 func (c Check) check(t *testing.T, test Test, mode Mode, value string) {
@@ -97,10 +101,16 @@ func checkFile(t *testing.T, fileName, value string) {
 
 var defaultCheckOut = Check{
 	checkType: matchFile,
-	checkOut:  true,
+	suffix:    outSuffix,
 }
 var defaultCheckErr = Check{
 	checkType: matchFile,
+	suffix:    errSuffix,
+}
+
+var defaultCheckPatch = Check{
+	checkType: matchFile,
+	suffix:    patchSuffix,
 }
 
 type CRSource string
@@ -132,13 +142,15 @@ func (m *Mode) String() string {
 var DefaultMode = Mode{crSource: Local, refSource: LocalRef}
 
 type Checks struct {
-	Out Check
-	Err Check
+	Out   Check
+	Err   Check
+	Patch Check
 }
 
 var defaultChecks = Checks{
-	Out: defaultCheckOut,
-	Err: defaultCheckErr,
+	Out:   defaultCheckOut,
+	Err:   defaultCheckErr,
+	Patch: defaultCheckPatch,
 }
 
 type Test struct {
@@ -149,10 +161,35 @@ type Test struct {
 	shouldDiffAll         bool
 	outputFormat          string
 	checks                Checks
+	patchSet              bool
+	tempDirPath           string
+}
+
+func (test *Test) getTestName() string {
+	return strings.ReplaceAll(test.name, " ", "")
 }
 
 func (test *Test) getTestDir() string {
-	return path.Join(TestDirs, strings.ReplaceAll(test.name, " ", ""))
+	return path.Join(TestDirs, test.getTestName())
+}
+
+func (test *Test) getPatchFile() string {
+	return path.Join(test.tempDirPath, "patchset.json")
+}
+
+func (test *Test) tempDir() (string, error) {
+	name, err := os.MkdirTemp("", fmt.Sprintf("test-%s", test.getTestName()))
+	if err != nil {
+		return name, err // nolint:wrapcheck
+	}
+	test.tempDirPath = name
+	return name, nil
+}
+
+func (test *Test) cleanUp() {
+	if test.tempDirPath != "" {
+		os.RemoveAll(test.tempDirPath)
+	}
 }
 
 // TestCompareRun ensures that Run command calls the right actions
@@ -177,6 +214,7 @@ func TestCompareRun(t *testing.T) {
 				Out: defaultCheckOut,
 				Err: Check{
 					checkType: matchRegex,
+					suffix:    errSuffix,
 					value: strings.TrimSpace(`
 error: Reference config file not found. error: open .*metadata.yaml: no such file or directory 
 error code:2`),
@@ -231,6 +269,7 @@ error code:2`),
 				Out: defaultCheckOut,
 				Err: Check{
 					checkType: matchRegex,
+					suffix:    errSuffix,
 					value: strings.TrimSpace(`
 error: User Config File not found. error: open .*testdata/UserConfigDoesntExist/userconfig.yaml: no such file or directory 
 error code:2`),
@@ -346,6 +385,7 @@ error code:2`),
 			mode:         []Mode{DefaultMode},
 			outputFormat: Json,
 			checks:       defaultChecks,
+			patchSet:     true,
 		},
 	}
 	tf := cmdtesting.NewTestFactory()
@@ -367,6 +407,14 @@ error code:2`),
 				defer func() {
 					_ = recover()
 					test.checks.Out.check(t, test, mode, removeInconsistentInfo(t, out.String()))
+					if test.patchSet {
+						patchFile, err := os.ReadFile(test.getPatchFile())
+						if err != nil {
+							require.NoError(t, err)
+						}
+						test.checks.Patch.check(t, test, mode, string(patchFile))
+					}
+					defer test.cleanUp()
 				}()
 				cmd.Run(cmd, []string{})
 			})
@@ -427,6 +475,15 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 			require.NoError(t, cmd.Flags().Set("reference", path.Join(test.getTestDir(), TestRefDirName)))
 		}
 	}
+
+	if test.patchSet {
+		p, err := test.tempDir()
+		if err != nil {
+			t.Fatalf("failed to setup tempdir")
+		}
+		cmd.Flags().Set("patch-file", filepath.Join(p, "patchset.json"))
+	}
+
 	return cmd
 }
 

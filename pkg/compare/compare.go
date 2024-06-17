@@ -115,6 +115,7 @@ type Options struct {
 	diffAll            bool
 	ShowManagedFields  bool
 	OutputFormat       string
+	patchFileName      string
 
 	builder     *resource.Builder
 	correlator  *MetricsCorrelatorDecorator
@@ -173,6 +174,7 @@ func NewCmd(f kcmdutil.Factory, streams genericiooptions.IOStreams) *cobra.Comma
 		"If present, In live mode will try to match all resources that are from the types mentioned in the reference. "+
 			"In local mode will try to match all resources passed to the command")
 
+	cmd.Flags().StringVarP(&options.patchFileName, "patch-file", "p", "", fmt.Sprintf(`Path for patch set file, if no path is provided then the patch set will not be saved`))
 	cmd.Flags().StringVarP(&options.OutputFormat, "output", "o", "", fmt.Sprintf(`Output format. One of: (%s)`, strings.Join(OutputFormats, ", ")))
 	kcmdutil.CheckErr(cmd.RegisterFlagCompletionFunc(
 		"output",
@@ -515,8 +517,22 @@ func (o *Options) Run() error {
 	}
 	sum := newSummary(&o.ref, o.correlator, numDiffCRs)
 
-	_, err = Output{Summary: sum, Diffs: &diffs}.Print(o.OutputFormat, o.Out)
+	output := Output{Summary: sum, Diffs: &diffs}
+	_, err = output.Print(o.OutputFormat, o.Out)
 	if err != nil {
+		return err
+	}
+
+	if o.patchFileName != "" {
+		patchFilePath, err := filepath.Abs(o.patchFileName)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute path for %s: %w", o.patchFileName, err)
+		}
+		f, err := os.Create(patchFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to create file %s: %w", patchFilePath, err)
+		}
+		err = output.SavePatches(f)
 		return err
 	}
 
@@ -669,4 +685,29 @@ func (o Output) Print(format string, out io.Writer) (int, error) {
 		return n, fmt.Errorf("error occurred when writing output: %w", err)
 	}
 	return n, nil
+}
+
+type Patch struct {
+	CRName string
+	Patch  string
+}
+
+func (o Output) SavePatches(out io.Writer) error {
+	patchSet := make([]*Patch, 0)
+	for _, diff := range *o.Diffs {
+		patchSet = append(patchSet, &Patch{
+			CRName: diff.CRName,
+			Patch:  diff.Patch,
+		})
+	}
+
+	content, err := json.Marshal(patchSet)
+	if err != nil {
+		return fmt.Errorf("failed to marshal patch set: %w", err)
+	}
+	_, err = out.Write(content)
+	if err != nil {
+		return fmt.Errorf("failed to save out patch set: %w", err)
+	}
+	return nil
 }
