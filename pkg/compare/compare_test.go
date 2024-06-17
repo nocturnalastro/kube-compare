@@ -481,7 +481,7 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 		if err != nil {
 			t.Fatalf("failed to setup tempdir")
 		}
-		cmd.Flags().Set("patch-file", filepath.Join(p, "patchset.json"))
+		cmd.Flags().Set("patch-out-file", filepath.Join(p, "patchset.json"))
 	}
 
 	return cmd

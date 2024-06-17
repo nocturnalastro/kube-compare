@@ -115,7 +115,9 @@ type Options struct {
 	diffAll            bool
 	ShowManagedFields  bool
 	OutputFormat       string
-	patchFileName      string
+	patchInFileName    string
+	patchOutFileName   string
+	patches            map[string][]byte
 
 	builder     *resource.Builder
 	correlator  *MetricsCorrelatorDecorator
@@ -174,7 +176,8 @@ func NewCmd(f kcmdutil.Factory, streams genericiooptions.IOStreams) *cobra.Comma
 		"If present, In live mode will try to match all resources that are from the types mentioned in the reference. "+
 			"In local mode will try to match all resources passed to the command")
 
-	cmd.Flags().StringVarP(&options.patchFileName, "patch-file", "p", "", fmt.Sprintf(`Path for patch set file, if no path is provided then the patch set will not be saved`))
+	cmd.Flags().StringVarP(&options.patchOutFileName, "patch-out-file", "p", "", "Path to write a patch set file to, if no path is provided then the patch set will not be saved")
+	cmd.Flags().StringVarP(&options.patchInFileName, "patch-in-file", "q", "", "Path to set of accepted patches")
 	cmd.Flags().StringVarP(&options.OutputFormat, "output", "o", "", fmt.Sprintf(`Output format. One of: (%s)`, strings.Join(OutputFormats, ", ")))
 	kcmdutil.CheckErr(cmd.RegisterFlagCompletionFunc(
 		"output",
@@ -266,7 +269,40 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 		return nil
 	}
 
+	err = o.loadPatchFile()
+	if err != nil {
+		return err
+	}
+
 	return o.setLiveSearchTypes(f)
+}
+
+func (o *Options) loadPatchFile() error {
+	o.patches = make(map[string][]byte)
+
+	if o.patchInFileName == "" {
+		return nil
+	}
+
+	patchInFileName, err := filepath.Abs(o.patchInFileName)
+	if err != nil {
+		return err
+	}
+
+	content, err := os.ReadFile(patchInFileName)
+	if err != nil {
+		return err
+	}
+	patchSet := make([]*Patch, 0)
+	err = json.Unmarshal(content, &patchSet)
+	if err != nil {
+		return err
+	}
+
+	for _, patch := range patchSet {
+		o.patches[patch.CRName] = []byte(patch.Patch)
+	}
+	return err
 }
 
 // setupCorrelators initializes a chain of correlators based on the provided options.
@@ -317,6 +353,7 @@ func (o *Options) setupCorrelators() error {
 	if !o.diffAll {
 		errorsToIgnore = []error{UnknownMatch{}}
 	}
+
 	o.correlator = NewMetricsCorrelatorDecorator(NewMultiCorrelator(correlators), o.ref.Parts, errorsToIgnore)
 	return nil
 }
@@ -414,7 +451,7 @@ func runDiff(obj diff.Object, streams genericiooptions.IOStreams, showManagedFie
 	return diffOutput, nil
 }
 
-func mergeManifests(localRef, clusterCR *unstructured.Unstructured) (updateLocalRef *unstructured.Unstructured, patch []byte, err error) {
+func mergeManifests(localRef, clusterCR *unstructured.Unstructured, userPatch []byte) (updateLocalRef *unstructured.Unstructured, patch []byte, err error) {
 	localRefData, err := json.Marshal(localRef)
 	if err != nil {
 		return nil, []byte{}, fmt.Errorf("failed to marshal reference CR: %w", err)
@@ -430,7 +467,14 @@ func mergeManifests(localRef, clusterCR *unstructured.Unstructured) (updateLocal
 		return nil, []byte{}, fmt.Errorf("failed to merge cluster and reference CRs: %w", err)
 	}
 
-	// This will be used later to enable user patches to be passed back in localRefUpdatedData, _ = jsonpatch.MergePatch(localRefUpdatedData, acceptableDiff)
+	if len(userPatch) > 0 {
+		localRefUpdatedPlusUserData, err := jsonpatch.MergePatch(localRefUpdatedData, userPatch)
+		if err != nil {
+			klog.Error("failed to apply user patch, reverting and confinuing without user patch")
+		} else {
+			localRefUpdatedData = localRefUpdatedPlusUserData
+		}
+	}
 
 	localRefUpdatedObj := make(map[string]any)
 	err = json.Unmarshal(localRefUpdatedData, &localRefUpdatedObj)
@@ -487,9 +531,12 @@ func (o *Options) Run() error {
 			return err
 		}
 
-		updatedLocalRef, patch, err := mergeManifests(localRef, clusterCR)
+		crName := apiKindNamespaceName(clusterCR)
+
+		userPatch := o.patches[crName] // if patch doesn't exist will get empty bytes array
+		updatedLocalRef, patch, err := mergeManifests(localRef, clusterCR, userPatch)
 		if err != nil {
-			klog.Errorf("failed to properly merge the manifests for %s some diffs may be incorrect: %s", apiKindNamespaceName(clusterCR), err)
+			klog.Errorf("failed to properly merge the manifests for %s some diffs may be incorrect: %s", crName, err)
 		}
 
 		if updatedLocalRef != nil {
@@ -509,7 +556,7 @@ func (o *Options) Run() error {
 			numDiffCRs += 1
 		}
 
-		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.Name(), CRName: apiKindNamespaceName(clusterCR), Patch: string(patch)})
+		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.Name(), CRName: crName, Patch: string(patch)})
 		return err
 	})
 	if err != nil {
@@ -523,10 +570,10 @@ func (o *Options) Run() error {
 		return err
 	}
 
-	if o.patchFileName != "" {
-		patchFilePath, err := filepath.Abs(o.patchFileName)
+	if o.patchOutFileName != "" {
+		patchFilePath, err := filepath.Abs(o.patchOutFileName)
 		if err != nil {
-			return fmt.Errorf("failed to get absolute path for %s: %w", o.patchFileName, err)
+			return fmt.Errorf("failed to get absolute path for %s: %w", o.patchOutFileName, err)
 		}
 		f, err := os.Create(patchFilePath)
 		if err != nil {
@@ -624,7 +671,7 @@ func (s Summary) String() string {
 Summary
 CRs with diffs: {{ .NumDiffCRs }}
 {{- if ne (len  .RequiredCRS) 0 }}
-CRs in reference missing from the cluster: {{.NumMissing}} 
+CRs in reference missing from the cluster: {{.NumMissing}}
 {{ toYaml .RequiredCRS}}
 {{- else}}
 No CRs are missing from the cluster
