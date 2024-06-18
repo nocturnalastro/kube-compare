@@ -1,0 +1,1 @@
+{"Summary":{"RequiredCRS":{},"NumMissing":0,"UnmatchedCRS":[],"NumDiffCRs":0},"Diffs":[{"DiffOutput":"","CorrelatedTemplate":"pod.yaml","CRName":"v1_Pod_liveness-exec","Patch":"{}"}]}

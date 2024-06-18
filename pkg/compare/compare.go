@@ -258,6 +258,11 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 		return err
 	}
 
+	err = o.loadPatchFile()
+	if err != nil {
+		return err
+	}
+
 	if len(args) != 0 {
 		return kcmdutil.UsageErrorf(cmd, "Unexpected args: %v", args)
 	}
@@ -267,11 +272,6 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 		o.local = true
 		o.types = []string{}
 		return nil
-	}
-
-	err = o.loadPatchFile()
-	if err != nil {
-		return err
 	}
 
 	return o.setLiveSearchTypes(f)

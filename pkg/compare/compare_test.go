@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var update = flag.Bool("update", false, "update .golden files")
+var update = flag.Bool("update", true, "update .golden files")
 
 const TestRefDirName = "reference"
 
@@ -161,7 +161,8 @@ type Test struct {
 	shouldDiffAll         bool
 	outputFormat          string
 	checks                Checks
-	patchSet              bool
+	getPatchSet           bool
+	patchSetToApply       string
 	tempDirPath           string
 }
 
@@ -190,6 +191,29 @@ func (test *Test) cleanUp() {
 	if test.tempDirPath != "" {
 		os.RemoveAll(test.tempDirPath)
 	}
+}
+
+func testCmd(t *testing.T, test Test, tf *cmdtesting.TestFactory, index int, mode Mode) {
+	IOStream, _, out, _ := genericiooptions.NewTestIOStreams()
+	klog.SetOutputBySeverity("INFO", out)
+	cmd := getCommand(t, &test, index, tf, &IOStream) // nolint:gosec
+	cmdutil.BehaviorOnFatal(func(str string, code int) {
+		errorStr := fmt.Sprintf("%s \nerror code:%d\n", removeInconsistentInfo(t, str), code)
+		test.checks.Err.check(t, test, mode, errorStr)
+		panic("Expected Error Test Case")
+	})
+	defer func() {
+		_ = recover()
+		test.checks.Out.check(t, test, mode, removeInconsistentInfo(t, out.String()))
+		if test.getPatchSet {
+			patchFile, err := os.ReadFile(test.getPatchFile())
+			if err != nil {
+				require.NoError(t, err)
+			}
+			test.checks.Patch.check(t, test, mode, string(patchFile))
+		}
+	}()
+	cmd.Run(cmd, []string{})
 }
 
 // TestCompareRun ensures that Run command calls the right actions
@@ -385,7 +409,7 @@ error code:2`),
 			mode:         []Mode{DefaultMode},
 			outputFormat: Json,
 			checks:       defaultChecks,
-			patchSet:     true,
+			getPatchSet:  true,
 		},
 	}
 	tf := cmdtesting.NewTestFactory()
@@ -396,27 +420,71 @@ error code:2`),
 	for _, test := range tests {
 		for i, mode := range test.mode {
 			t.Run(test.name+mode.String(), func(t *testing.T) {
-				IOStream, _, out, _ := genericiooptions.NewTestIOStreams()
-				klog.SetOutputBySeverity("INFO", out)
-				cmd := getCommand(t, &test, i, tf, &IOStream) // nolint:gosec
-				cmdutil.BehaviorOnFatal(func(str string, code int) {
-					errorStr := fmt.Sprintf("%s \nerror code:%d\n", removeInconsistentInfo(t, str), code)
-					test.checks.Err.check(t, test, mode, errorStr)
-					panic("Expected Error Test Case")
-				})
-				defer func() {
-					_ = recover()
-					test.checks.Out.check(t, test, mode, removeInconsistentInfo(t, out.String()))
-					if test.patchSet {
-						patchFile, err := os.ReadFile(test.getPatchFile())
-						if err != nil {
-							require.NoError(t, err)
-						}
-						test.checks.Patch.check(t, test, mode, string(patchFile))
-					}
-					defer test.cleanUp()
-				}()
-				cmd.Run(cmd, []string{})
+				testCmd(t, test, tf, i, mode)
+				defer test.cleanUp()
+			})
+		}
+	}
+}
+
+// TestCompareRun ensures that Run command calls the right actions
+// and returns the expected error.
+func TestCompareRunTwoPhaseWithPatches(t *testing.T) {
+	const (
+		outSuffiPhase2 checkSuffix = "out2.golden"
+		errSuffiPhase2 checkSuffix = "err2.golden"
+		patchSufPhase2 checkSuffix = "patch2.golden"
+	)
+	phase2Check := Checks{
+		Out: Check{
+			checkType: matchFile,
+			suffix:    outSuffiPhase2,
+		},
+		Err: Check{
+			checkType: matchFile,
+			suffix:    errSuffiPhase2,
+		},
+		Patch: Check{
+			checkType: matchFile,
+			suffix:    patchSufPhase2,
+		},
+	}
+
+	tests := []Test{
+		{
+			name:         "Acceptable Diff",
+			mode:         []Mode{DefaultMode},
+			outputFormat: Json,
+			checks:       defaultChecks,
+			getPatchSet:  true,
+		},
+		{
+			name:         "No Diff",
+			mode:         []Mode{DefaultMode},
+			outputFormat: Json,
+			checks:       defaultChecks,
+			getPatchSet:  true,
+		},
+	}
+	tf := cmdtesting.NewTestFactory()
+	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
+	klog.InitFlags(testFlags)
+	klog.LogToStderr(false)
+	_ = testFlags.Parse([]string{"--skip_headers"})
+	for _, test := range tests {
+		for i, mode := range test.mode {
+			t.Run(test.name+mode.String(), func(t *testing.T) {
+				_, err := test.tempDir()
+				if err != nil {
+					t.Fatalf("failed to setup tempdir")
+				}
+				defer test.cleanUp()
+				// Part one get patch
+				testCmd(t, test, tf, i, mode)
+				// Part two apply patch
+				test.patchSetToApply = test.getPatchFile()
+				test.checks = phase2Check
+				testCmd(t, test, tf, i, mode)
 			})
 		}
 	}
@@ -476,12 +544,17 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 		}
 	}
 
-	if test.patchSet {
-		p, err := test.tempDir()
-		if err != nil {
-			t.Fatalf("failed to setup tempdir")
+	if test.getPatchSet {
+		if test.tempDirPath == "" {
+			_, err := test.tempDir()
+			if err != nil {
+				t.Fatalf("failed to setup tempdir")
+			}
 		}
-		cmd.Flags().Set("patch-out-file", filepath.Join(p, "patchset.json"))
+		cmd.Flags().Set("patch-out-file", test.getPatchFile())
+	}
+	if test.patchSetToApply != "" {
+		cmd.Flags().Set("patch-in-file", test.patchSetToApply)
 	}
 
 	return cmd
