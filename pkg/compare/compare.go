@@ -119,7 +119,7 @@ type Options struct {
 
 	builder     *resource.Builder
 	correlator  *MetricsCorrelatorDecorator
-	templates   []*template.Template
+	templates   []*ReferenceTemplate
 	local       bool
 	types       []string
 	ref         Reference
@@ -374,7 +374,7 @@ func getSupportedResourceTypes(client discovery.CachedDiscoveryInterface) (map[s
 
 // findAllRequestedSupportedTypes divides the requested types in to two groups: supported types and unsupported types based on if they are specified as supported.
 // The list of supported types will include the types in the form of {kind}.{group}.
-func findAllRequestedSupportedTypes(supportedTypesWithGroups map[string][]string, requestedTypes map[string][]*template.Template) ([]string, []string) {
+func findAllRequestedSupportedTypes(supportedTypesWithGroups map[string][]string, requestedTypes map[string][]*ReferenceTemplate) ([]string, []string) {
 	var typesIncludingGroup []string
 	var notSupportedTypes []string
 	for kind := range requestedTypes {
@@ -490,12 +490,12 @@ func (o *Options) Run() error {
 			return err
 		}
 
-		localRef, err := executeYAMLTemplate(temp, clusterCR.Object)
+		localRef, err := temp.Exec(clusterCR.Object)
 		if err != nil {
 			return err
 		}
 
-		localRef, patch, err := mergeAndGetPatch(localRef, clusterCR, o.showMore)
+		localRef, patch, err := mergeAndGetPatch(localRef, clusterCR, o.showMore || temp.exactMatch)
 		if err != nil {
 			klog.Errorf("failed to properly merge the manifests for %s some diffs may be incorrect: %s", apiKindNamespaceName(clusterCR), err)
 		}

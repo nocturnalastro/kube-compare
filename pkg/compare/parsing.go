@@ -10,10 +10,15 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"text/template"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/yaml"
+)
+
+var (
+	noMergeCommentFlag = regexp.MustCompile(`(?m:^#\s*cluster-compare:\s*exact-match\s*$)`)
 )
 
 type Reference struct {
@@ -132,10 +137,20 @@ func parseYaml[T any](fsys fs.FS, filePath string, structType *T, fileNotFoundEr
 	return nil
 }
 
-func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*template.Template, error) {
-	var templates []*template.Template
+type ReferenceTemplate struct {
+	*template.Template
+	exactMatch bool
+}
+
+func (t *ReferenceTemplate) Exec(params map[string]any) (*unstructured.Unstructured, error) {
+	return executeYAMLTemplate(t.Template, params)
+}
+
+func parseTemplates(templatePaths []string, functionTemplates []string, fsys fs.FS) ([]*ReferenceTemplate, error) {
+	var templates []*ReferenceTemplate
 	var errs []error
 	for _, temp := range templatePaths {
+
 		parsedTemp, err := template.New(path.Base(temp)).Funcs(FuncMap()).ParseFS(fsys, temp)
 		if err != nil {
 			errs = append(errs, fmt.Errorf(templatesCantBeParsed, temp, err))
@@ -150,8 +165,15 @@ func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*t
 				continue
 			}
 		}
-		templates = append(templates, parsedTemp)
+
+		content, err := fs.ReadFile(fsys, temp)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to reopen template %s: %w", temp, err))
+			continue
+		}
+		templates = append(templates, &ReferenceTemplate{Template: parsedTemp, exactMatch: noMergeCommentFlag.Match(content)})
 	}
+
 	return templates, errors.Join(errs...) // nolint:wrapcheck
 }
 
@@ -193,7 +215,7 @@ func executeYAMLTemplate(temp *template.Template, params map[string]any) (*unstr
 	return &unstructured.Unstructured{Object: data}, nil
 }
 
-func extractMetadata(t *template.Template) (*unstructured.Unstructured, error) {
-	yamlTemplate, err := executeYAMLTemplate(t, map[string]any{})
+func extractMetadata(t *ReferenceTemplate) (*unstructured.Unstructured, error) {
+	yamlTemplate, err := t.Exec(map[string]any{})
 	return yamlTemplate, err
 }
