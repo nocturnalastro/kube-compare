@@ -37,16 +37,26 @@ const (
 type Component struct {
 	Name              string        `json:"name"`
 	Type              ComponentType `json:"type,omitempty"`
+	ExactMatch        bool          `json:"exactMatch,omitempty"`
 	RequiredTemplates []string      `json:"requiredTemplates,omitempty"`
 	OptionalTemplates []string      `json:"optionalTemplates,omitempty"`
 }
 
-func (r *Reference) getTemplates() []string {
-	var templates []string
+type ReferenceTemplateRef struct {
+	path       string
+	exactMatch bool
+}
+
+func (r *Reference) getTemplates() []ReferenceTemplateRef {
+	var templates []ReferenceTemplateRef
 	for _, part := range r.Parts {
 		for _, comp := range part.Components {
-			templates = append(templates, comp.RequiredTemplates...)
-			templates = append(templates, comp.OptionalTemplates...)
+			for _, t := range comp.RequiredTemplates {
+				templates = append(templates, ReferenceTemplateRef{path: t, exactMatch: comp.ExactMatch})
+			}
+			for _, t := range comp.OptionalTemplates {
+				templates = append(templates, ReferenceTemplateRef{path: t, exactMatch: comp.ExactMatch})
+			}
 		}
 	}
 	return templates
@@ -132,17 +142,27 @@ func parseYaml[T any](fsys fs.FS, filePath string, structType *T, fileNotFoundEr
 	return nil
 }
 
-func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*template.Template, error) {
-	var templates []*template.Template
+type ReferenceTemplate struct {
+	*template.Template
+	exactMatch bool
+}
+
+func (t *ReferenceTemplate) Exec(params map[string]any) (*unstructured.Unstructured, error) {
+	return executeYAMLTemplate(t.Template, params)
+}
+
+func parseTemplates(templatePaths []ReferenceTemplateRef, functionTemplates []string, fsys fs.FS) ([]*ReferenceTemplate, error) {
+	var templates []*ReferenceTemplate
 	var errs []error
 	for _, temp := range templatePaths {
-		parsedTemp, err := template.New(path.Base(temp)).Funcs(FuncMap()).ParseFS(fsys, temp)
+
+		parsedTemp, err := template.New(path.Base(temp.path)).Funcs(FuncMap()).ParseFS(fsys, temp.path)
 		if err != nil {
-			errs = append(errs, fmt.Errorf(templatesCantBeParsed, temp, err))
+			errs = append(errs, fmt.Errorf(templatesCantBeParsed, temp.path, err))
 			continue
 		}
 		// recreate template with new name that includes path from reference root:
-		parsedTemp, _ = template.New(temp).Funcs(FuncMap()).AddParseTree(temp, parsedTemp.Tree)
+		parsedTemp, _ = template.New(temp.path).Funcs(FuncMap()).AddParseTree(temp.path, parsedTemp.Tree)
 		if len(functionTemplates) > 0 {
 			parsedTemp, err = parsedTemp.ParseFS(fsys, functionTemplates...)
 			if err != nil {
@@ -150,8 +170,9 @@ func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*t
 				continue
 			}
 		}
-		templates = append(templates, parsedTemp)
+		templates = append(templates, &ReferenceTemplate{Template: parsedTemp, exactMatch: temp.exactMatch})
 	}
+
 	return templates, errors.Join(errs...) // nolint:wrapcheck
 }
 
@@ -193,7 +214,7 @@ func executeYAMLTemplate(temp *template.Template, params map[string]any) (*unstr
 	return &unstructured.Unstructured{Object: data}, nil
 }
 
-func extractMetadata(t *template.Template) (*unstructured.Unstructured, error) {
-	yamlTemplate, err := executeYAMLTemplate(t, map[string]any{})
+func extractMetadata(t *ReferenceTemplate) (*unstructured.Unstructured, error) {
+	yamlTemplate, err := t.Exec(map[string]any{})
 	return yamlTemplate, err
 }

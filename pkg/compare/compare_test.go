@@ -370,6 +370,11 @@ error code:2`),
 			showMore: true,
 			checks:   defaultChecks,
 		},
+		{
+			name:   "Exactly Match In MetaData",
+			mode:   []Mode{DefaultMode},
+			checks: defaultChecks,
+		},
 	}
 	tf := cmdtesting.NewTestFactory()
 	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
