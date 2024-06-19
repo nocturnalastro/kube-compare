@@ -10,6 +10,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	"github.com/Masterminds/sprig/v3"
+	jsonpatch "github.com/evanphx/json-patch"
 	"sigs.k8s.io/yaml"
 )
 
@@ -42,6 +43,7 @@ func FuncMap() template.FuncMap {
 		"toJson":        toJSON,
 		"fromJson":      fromJSON,
 		"fromJsonArray": fromJSONArray,
+		"onlyMatch":     onlyMatch,
 	}
 
 	for k, v := range extra {
@@ -149,4 +151,12 @@ func fromJSONArray(str string) []any {
 		a = []any{err.Error()}
 	}
 	return a
+}
+
+func onlyMatch(data any, matchFields string) string {
+	if data == nil {
+		return matchFields
+	}
+	patch, _ := jsonpatch.CreateMergePatch([]byte(toJSON(data)), []byte(toJSON(fromYAML(matchFields))))
+	return string(patch)
 }

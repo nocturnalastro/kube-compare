@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var update = flag.Bool("update", false, "update .golden files")
+var update = flag.Bool("update", true, "update .golden files")
 
 const TestRefDirName = "reference"
 
@@ -343,6 +343,22 @@ error code:2`),
 		},
 		{
 			name:         "Check Probes Merge",
+			mode:         []Mode{DefaultMode},
+			outputFormat: Json,
+			checks:       defaultChecks,
+		},
+		{
+			name:   "Only Match Partial",
+			mode:   []Mode{DefaultMode},
+			checks: defaultChecks,
+		},
+		{
+			name:   "Only Match Full",
+			mode:   []Mode{DefaultMode},
+			checks: defaultChecks,
+		},
+		{
+			name:         "Check Probes Only Match",
 			mode:         []Mode{DefaultMode},
 			outputFormat: Json,
 			checks:       defaultChecks,

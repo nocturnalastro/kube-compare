@@ -1,0 +1,10 @@
+{{ onlyMatch . `
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openshift-storage
+  annotations:
+      workload.openshift.io/allowed: management
+  labels:
+    openshift.io/cluster-monitoring: "true"
+` }}

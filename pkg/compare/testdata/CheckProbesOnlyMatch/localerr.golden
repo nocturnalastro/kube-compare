@@ -1,0 +1,2 @@
+error: an error occurred while parsing template: pod.yaml specified in the config. error: template: pod.yaml:16: unexpected ".0" in operand 
+error code:2
