@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var update = flag.Bool("update", true, "update .golden files")
+var update = flag.Bool("update", false, "update .golden files")
 
 const TestRefDirName = "reference"
 
@@ -149,6 +149,7 @@ type Test struct {
 	shouldDiffAll         bool
 	outputFormat          string
 	checks                Checks
+	showMore              bool
 }
 
 func (test *Test) getTestDir() string {
@@ -363,6 +364,12 @@ error code:2`),
 			outputFormat: Json,
 			checks:       defaultChecks,
 		},
+		{
+			name:     "Show More Flag",
+			mode:     []Mode{DefaultMode},
+			showMore: true,
+			checks:   defaultChecks,
+		},
 	}
 	tf := cmdtesting.NewTestFactory()
 	testFlags := flag.NewFlagSet("test", flag.ContinueOnError)
@@ -443,6 +450,7 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 			require.NoError(t, cmd.Flags().Set("reference", path.Join(test.getTestDir(), TestRefDirName)))
 		}
 	}
+	require.NoError(t, cmd.Flags().Set("show-more", fmt.Sprintf("%v", test.showMore)))
 	return cmd
 }
 

@@ -115,6 +115,7 @@ type Options struct {
 	diffAll            bool
 	ShowManagedFields  bool
 	OutputFormat       string
+	showMore           bool
 
 	builder     *resource.Builder
 	correlator  *MetricsCorrelatorDecorator
@@ -172,6 +173,7 @@ func NewCmd(f kcmdutil.Factory, streams genericiooptions.IOStreams) *cobra.Comma
 	cmd.Flags().BoolVarP(&options.diffAll, "all-resources", "A", options.diffAll,
 		"If present, In live mode will try to match all resources that are from the types mentioned in the reference. "+
 			"In local mode will try to match all resources passed to the command")
+	cmd.Flags().BoolVarP(&options.showMore, "show-more", "v", options.showMore, "Will match reference exactly")
 
 	cmd.Flags().StringVarP(&options.OutputFormat, "output", "o", "", fmt.Sprintf(`Output format. One of: (%s)`, strings.Join(OutputFormats, ", ")))
 	kcmdutil.CheckErr(cmd.RegisterFlagCompletionFunc(
@@ -412,38 +414,46 @@ func runDiff(obj diff.Object, streams genericiooptions.IOStreams, showManagedFie
 	return diffOutput, nil
 }
 
-func mergeManifests(localRef, clusterCR *unstructured.Unstructured) (updateLocalRef *unstructured.Unstructured, patch []byte, err error) {
+// mergeAndGetPatch will return an attempt to update the localRef with the clusterCR (unless this is skipped then it will retunr localRef) and produce the patch
+// in the case when skipMerge is true the patch will be based on the origonal localRef. In the case of an error it will return an unmodified localRef
+func mergeAndGetPatch(localRef, clusterCR *unstructured.Unstructured, skipMerge bool) (updateLocalRef *unstructured.Unstructured, patch []byte, err error) {
 	localRefData, err := json.Marshal(localRef)
 	if err != nil {
-		return nil, []byte{}, fmt.Errorf("failed to marshal reference CR: %w", err)
+		return localRef, []byte{}, fmt.Errorf("failed to marshal reference CR: %w", err)
 	}
 
 	clusterCRData, err := json.Marshal(clusterCR.Object)
 	if err != nil {
-		return nil, []byte{}, fmt.Errorf("failed to marshal cluster CR: %w", err)
+		return localRef, []byte{}, fmt.Errorf("failed to marshal cluster CR: %w", err)
 	}
 
-	localRefUpdatedData, err := jsonpatch.MergePatch(clusterCRData, localRefData)
+	if !skipMerge {
+		localRefUpdatedData, err := jsonpatch.MergePatch(clusterCRData, localRefData)
+		if err != nil {
+			return localRef, []byte{}, fmt.Errorf("failed to merge cluster and reference CRs: %w", err)
+		}
+		// This will be used later to enable user patches to be passed back in localRefUpdatedData, _ = jsonpatch.MergePatch(localRefUpdatedData, acceptableDiff)
+
+		// Update localRefData to be used later in patch creation
+		localRefData = localRefUpdatedData
+
+		localRefUpdatedObj := make(map[string]any)
+		err = json.Unmarshal(localRefData, &localRefUpdatedObj)
+		if err != nil {
+			return localRef, []byte{}, fmt.Errorf("failed to unmarshal updated manifest: %w", err)
+		}
+
+		// update local ref to be returned
+		localRef = &unstructured.Unstructured{Object: localRefUpdatedObj}
+	}
+
+	// Note merge will update localRefData
+	patch, err = jsonpatch.CreateMergePatch(localRefData, clusterCRData)
 	if err != nil {
-		return nil, []byte{}, fmt.Errorf("failed to merge cluster and reference CRs: %w", err)
+		return localRef, []byte{}, fmt.Errorf("failed to create patch: %w", err)
 	}
 
-	// This will be used later to enable user patches to be passed back in localRefUpdatedData, _ = jsonpatch.MergePatch(localRefUpdatedData, acceptableDiff)
-
-	localRefUpdatedObj := make(map[string]any)
-	err = json.Unmarshal(localRefUpdatedData, &localRefUpdatedObj)
-	if err != nil {
-		return nil, []byte{}, fmt.Errorf("failed to unmarshal updated manifest: %w", err)
-	}
-
-	localRefUpdated := &unstructured.Unstructured{Object: localRefUpdatedObj}
-
-	patch, err = jsonpatch.CreateMergePatch(localRefUpdatedData, clusterCRData)
-	if err != nil {
-		return localRefUpdated, []byte{}, fmt.Errorf("failed to create patch: %w", err)
-	}
-
-	return localRefUpdated, patch, nil
+	return localRef, patch, nil
 }
 
 // Run uses the factory to parse file arguments (in case of local mode) or gather all cluster resources matching
@@ -485,13 +495,9 @@ func (o *Options) Run() error {
 			return err
 		}
 
-		updatedLocalRef, patch, err := mergeManifests(localRef, clusterCR)
+		localRef, patch, err := mergeAndGetPatch(localRef, clusterCR, o.showMore)
 		if err != nil {
 			klog.Errorf("failed to properly merge the manifests for %s some diffs may be incorrect: %s", apiKindNamespaceName(clusterCR), err)
-		}
-
-		if updatedLocalRef != nil {
-			localRef = updatedLocalRef
 		}
 
 		obj := InfoObject{
