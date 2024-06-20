@@ -146,12 +146,18 @@ func (t *ReferenceTemplate) Exec(params map[string]any) (*unstructured.Unstructu
 	return executeYAMLTemplate(t.Template, params)
 }
 
-func parseTemplates(templatePaths []string, functionTemplates []string, fsys fs.FS) ([]*ReferenceTemplate, error) {
+func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*ReferenceTemplate, error) {
 	var templates []*ReferenceTemplate
 	var errs []error
 	for _, temp := range templatePaths {
 
-		parsedTemp, err := template.New(path.Base(temp)).Funcs(FuncMap()).ParseFS(fsys, temp)
+		content, err := fs.ReadFile(fsys, temp)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("failed to open template %s: %w", temp, err))
+			continue
+		}
+		exactMatch := noMergeCommentFlag.Match(content)
+		parsedTemp, err := template.New(path.Base(temp)).Funcs(FuncMap()).Parse(string(content))
 		if err != nil {
 			errs = append(errs, fmt.Errorf(templatesCantBeParsed, temp, err))
 			continue
@@ -166,12 +172,7 @@ func parseTemplates(templatePaths []string, functionTemplates []string, fsys fs.
 			}
 		}
 
-		content, err := fs.ReadFile(fsys, temp)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("failed to reopen template %s: %w", temp, err))
-			continue
-		}
-		templates = append(templates, &ReferenceTemplate{Template: parsedTemp, exactMatch: noMergeCommentFlag.Match(content)})
+		templates = append(templates, &ReferenceTemplate{Template: parsedTemp, exactMatch: exactMatch})
 	}
 
 	return templates, errors.Join(errs...) // nolint:wrapcheck
