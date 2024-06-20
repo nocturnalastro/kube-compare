@@ -6,18 +6,21 @@ Reference File: namespace.yaml
 Diff Output: diff -u -N TEMP/v1_namespace_openshift-storage TEMP/v1_namespace_openshift-storage
 --- TEMP/v1_namespace_openshift-storage	DATE
 +++ TEMP/v1_namespace_openshift-storage	DATE
-@@ -6,11 +6,9 @@
+@@ -2,7 +2,19 @@
+ kind: Namespace
+ metadata:
+   annotations:
+-    workload.openshift.io/allowed: management
+     openshift.io/sa.scc.mcs: s0:c29,c14
      openshift.io/sa.scc.supplemental-groups: 1000840000/10000
      openshift.io/sa.scc.uid-range: 1000840000/10000
      reclaimspace.csiaddons.openshift.io/schedule: '@weekly'
--    workload.openshift.io/allowed: management
    labels:
+-    openshift.io/cluster-monitoring: "true"
      kubernetes.io/metadata.name: openshift-storage
      olm.operatorgroup.uid/ffcf3f2d-3e37-4772-97bc-983cdfce128b: ""
--    openshift.io/cluster-monitoring: "true"
      pod-security.kubernetes.io/audit: privileged
-     pod-security.kubernetes.io/audit-version: v1.24
-     pod-security.kubernetes.io/warn: privileged
+
 
 **********************************
 

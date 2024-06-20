@@ -3,6 +3,7 @@
 package compare
 
 import (
+	"bufio"
 	"bytes"
 	"errors"
 	"fmt"
@@ -11,9 +12,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
 )
 
@@ -156,7 +159,6 @@ func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*R
 			errs = append(errs, fmt.Errorf("failed to open template %s: %w", temp, err))
 			continue
 		}
-		exactMatch := noMergeCommentFlag.Match(content)
 		parsedTemp, err := template.New(path.Base(temp)).Funcs(FuncMap()).Parse(string(content))
 		if err != nil {
 			errs = append(errs, fmt.Errorf(templatesCantBeParsed, temp, err))
@@ -172,7 +174,7 @@ func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*R
 			}
 		}
 
-		templates = append(templates, &ReferenceTemplate{Template: parsedTemp, exactMatch: exactMatch})
+		templates = append(templates, &ReferenceTemplate{Template: parsedTemp})
 	}
 
 	return templates, errors.Join(errs...) // nolint:wrapcheck
@@ -202,16 +204,23 @@ func parseDiffConfig(filePath string) (UserConfig, error) {
 
 const noValue = "<no value>"
 
-func executeYAMLTemplate(temp *template.Template, params map[string]any) (*unstructured.Unstructured, error) {
+func executeYAMLTemplatRaw(temp *template.Template, params map[string]any) ([]byte, error) {
 	var buf bytes.Buffer
 	err := temp.Execute(&buf, params)
 	if err != nil {
-		return nil, fmt.Errorf("failed to constuct template: %w", err)
+		return []byte{}, fmt.Errorf("failed to constuct template: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+func executeYAMLTemplate(temp *template.Template, params map[string]any) (*unstructured.Unstructured, error) {
+	content, err := executeYAMLTemplatRaw(temp, params)
+	if err != nil {
+		return nil, err
 	}
 	data := make(map[string]any)
-	err = yaml.Unmarshal(bytes.ReplaceAll(buf.Bytes(), []byte(noValue), []byte("")), &data)
+	err = yaml.Unmarshal(bytes.ReplaceAll(content, []byte(noValue), []byte("")), &data)
 	if err != nil {
-		return nil, fmt.Errorf("template: %s isn't a yaml file after injection. yaml unmarshal error: %w. The Template After Execution: %s", temp.Name(), err, buf.String())
+		return nil, fmt.Errorf("template: %s isn't a yaml file after injection. yaml unmarshal error: %w. The Template After Execution: %s", temp.Name(), err, string(content))
 	}
 	return &unstructured.Unstructured{Object: data}, nil
 }
@@ -219,4 +228,39 @@ func executeYAMLTemplate(temp *template.Template, params map[string]any) (*unstr
 func extractMetadata(t *ReferenceTemplate) (*unstructured.Unstructured, error) {
 	yamlTemplate, err := t.Exec(map[string]any{})
 	return yamlTemplate, err
+}
+
+func extractCommentMap(temp *ReferenceTemplate) (map[string]string, error) {
+	config := make(map[string]string)
+	raw, _ := executeYAMLTemplatRaw(temp.Template, map[string]any{})
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	errs := make([]error, 0)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "#") {
+			continue
+		}
+		comment := strings.Trim(line, "# ")
+		mapStr, found := strings.CutPrefix(comment, "cluster-compare:")
+		if !found {
+			continue
+		}
+		mapStr = strings.TrimSpace(mapStr)
+		for _, kv := range strings.Split(mapStr, ";") {
+			pair := strings.Split(kv, "=")
+			switch len(pair) {
+			case 2:
+				config[pair[0]] = pair[1]
+			default:
+				err := fmt.Errorf("failed to parse template comment config: invalid format in %s expecting the form key=value, got %s", line, kv)
+				klog.Error(err)
+				errs = append(errs, err)
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		klog.Errorf("failed to read metadata: %s", err)
+	}
+	return config, errors.Join(errs...)
 }

@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -495,7 +496,19 @@ func (o *Options) Run() error {
 			return err
 		}
 
-		localRef, patch, err := mergeAndGetPatch(localRef, clusterCR, o.showMore || temp.exactMatch)
+		exactMatch := false
+		config, _ := extractCommentMap(temp)
+		v, ok := config["exact-match"]
+		if ok {
+			b, err := strconv.ParseBool(v)
+			if err != nil {
+				klog.Errorf("failed to parse exact-match value to bool: %s", v)
+			} else {
+				exactMatch = b
+			}
+		}
+
+		localRef, patch, err := mergeAndGetPatch(localRef, clusterCR, o.showMore || exactMatch)
 		if err != nil {
 			klog.Errorf("failed to properly merge the manifests for %s some diffs may be incorrect: %s", apiKindNamespaceName(clusterCR), err)
 		}
