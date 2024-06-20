@@ -1,4 +1,4 @@
-# cluster-compare: exact-match=true
+# cluster-compare: exact-match=false
 apiVersion: v1
 kind: Namespace
 metadata:

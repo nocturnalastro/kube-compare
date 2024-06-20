@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -143,10 +144,33 @@ func parseYaml[T any](fsys fs.FS, filePath string, structType *T, fileNotFoundEr
 type ReferenceTemplate struct {
 	*template.Template
 	exactMatch bool
+	config     map[string]string
 }
 
 func (t *ReferenceTemplate) Exec(params map[string]any) (*unstructured.Unstructured, error) {
 	return executeYAMLTemplate(t.Template, params)
+}
+
+func NewReferenceTemplate(t *template.Template) (*ReferenceTemplate, error) {
+	rf := &ReferenceTemplate{Template: t, config: make(map[string]string)}
+
+	config, err := extractCommentMap(t)
+	if err != nil {
+		return rf, err
+	}
+	rf.config = config
+	v, ok := config["exact-match"]
+	if ok {
+		var b bool
+		b, err = strconv.ParseBool(v)
+		if err != nil {
+			err = fmt.Errorf("failed to parse exact-match value to bool: %w", err)
+		} else {
+			rf.exactMatch = b
+		}
+	}
+
+	return rf, err
 }
 
 func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*ReferenceTemplate, error) {
@@ -174,7 +198,11 @@ func parseTemplates(templatePaths, functionTemplates []string, fsys fs.FS) ([]*R
 			}
 		}
 
-		templates = append(templates, &ReferenceTemplate{Template: parsedTemp})
+		rf, err := NewReferenceTemplate(parsedTemp)
+		if err != nil {
+			errs = append(errs, err)
+		}
+		templates = append(templates, rf)
 	}
 
 	return templates, errors.Join(errs...) // nolint:wrapcheck
@@ -230,9 +258,9 @@ func extractMetadata(t *ReferenceTemplate) (*unstructured.Unstructured, error) {
 	return yamlTemplate, err
 }
 
-func extractCommentMap(temp *ReferenceTemplate) (map[string]string, error) {
+func extractCommentMap(temp *template.Template) (map[string]string, error) {
 	config := make(map[string]string)
-	raw, _ := executeYAMLTemplatRaw(temp.Template, map[string]any{})
+	raw, _ := executeYAMLTemplatRaw(temp, map[string]any{})
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	errs := make([]error, 0)
 	for scanner.Scan() {

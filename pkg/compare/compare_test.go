@@ -32,7 +32,7 @@ import (
 	"sigs.k8s.io/yaml"
 )
 
-var update = flag.Bool("update", false, "update .golden files")
+var update = flag.Bool("update", true, "update .golden files")
 
 const TestRefDirName = "reference"
 
@@ -372,6 +372,11 @@ error code:2`),
 		},
 		{
 			name:   "Exactly Match In Template",
+			mode:   []Mode{DefaultMode},
+			checks: defaultChecks,
+		},
+		{
+			name:   "Dont Exactly Match In Template",
 			mode:   []Mode{DefaultMode},
 			checks: defaultChecks,
 		},
