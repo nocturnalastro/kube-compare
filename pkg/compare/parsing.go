@@ -107,8 +107,9 @@ type ReferenceTemplateConfig struct {
 
 type ReferenceTemplate struct {
 	*template.Template
-	Path   string                  `json:"path"`
-	Config ReferenceTemplateConfig `json:"config,omitempty"`
+	Path             string                  `json:"path"`
+	Config           ReferenceTemplateConfig `json:"config,omitempty"`
+	FieldsToOmitRefs []string                `json:"fieldsToOmitRefs,omitempty"`
 }
 
 func (rf ReferenceTemplate) FeildsToOmit(fieldsToOmit FieldsToOmit) []Path {
@@ -251,10 +252,12 @@ func getReference(fsys fs.FS) (Reference, error) {
 	if err != nil {
 		return result, err
 	}
+
 	err = result.FieldsToOmit.process()
 	if err != nil {
 		return result, err
 	}
+
 	return result, nil
 }
 
