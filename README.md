@@ -81,19 +81,33 @@ Parts:
         type: Required # mark the Component as "Required" or "Optional"
         requiredTemplates: # absence from cluster manifests is considered a diff
           - path: redis-master-deployment.yaml
+            fieldsToOmitRefs:
+               - default
+               - deployments
           - path: redis-master-service.yaml
         optionalTemplates: # will not be reported if missing from cluster manifests
           - path: redis-replica-deployment.yaml
+            fieldsToOmitRefs:
+               - deployments
           - path: redis-replica-service.yaml
       - name: frontend
         type: Required
         requiredTemplates:
           - path: frontend-deployment.yaml
+            fieldsToOmitRefs:
+               - deployments
           - path: frontend-service.yaml
+            fieldsToOmitRefs:
+               - cluster-compare-built-in
+
 fieldsToOmit:
-  - - "metadata"
-    - "labels"
-    - "k8s-app" # remove metadata.labels.k8s-app before diff
+   defualt:
+   - a.custom.default."k8s.io"
+  deployments:
+    - spec.selector.matchLabels.k8s-app
+    - metadata.labels.k8s-app
+    - spec.template.metadata.labels.k8s-app
+
 ```
 
 `metadata.yaml` supports several other advanced behaviours:
