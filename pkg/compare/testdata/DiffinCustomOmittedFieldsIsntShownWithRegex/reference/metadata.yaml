@@ -1,0 +1,19 @@
+Parts:
+  - name: ExamplePart
+    Components:
+      - name: Dashboard
+        type: Required
+        requiredTemplates:
+          - path: deploymentMetrics.yaml
+
+fieldsToOmit:
+  config:
+    defaultKey: default
+  items:
+    default:
+    - path: 'spec.selector.matchLabels."k8s-app.*"'
+      isRegex: true
+    - path: 'metadata.labels."k8s-app.*"'
+      isRegex: true
+    - path: 'spec.template.metadata.labels."k8s-app.*"'
+      isRegex: true

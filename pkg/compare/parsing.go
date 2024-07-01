@@ -48,16 +48,15 @@ type FieldsToOmitConfig struct {
 }
 
 type FieldsToOmit struct {
-	Config         FieldsToOmitConfig  `json:"config,omitempty"`
-	Items          map[string][]string `json:"items,omitempty"`
-	processedItems map[string][]Path
+	Config FieldsToOmitConfig `json:"config,omitempty"`
+	Items  map[string][]*Path `json:"items,omitempty"`
 }
 
 // Setup FieldsToOmit to be used by setting defaults
 // and processing the item strings into paths
 func (toOmit *FieldsToOmit) process() error {
 	if toOmit.Items == nil {
-		toOmit.Items = make(map[string][]string)
+		toOmit.Items = make(map[string][]*Path)
 	}
 
 	if _, ok := toOmit.Items[builtInPathsKey]; ok {
@@ -74,22 +73,18 @@ func (toOmit *FieldsToOmit) process() error {
 		return fmt.Errorf(fieldsToOmitDefaultNotFound, toOmit.Config.DefaultKey)
 	}
 
-	toOmit.processedItems = make(map[string][]Path)
 	for key, pathsArray := range toOmit.Items {
-		processedPaths := make([]Path, 0)
+		processedPaths := make([]*Path, 0)
 		for _, path := range pathsArray {
-			p, err := NewPath(path)
+			err := path.Process()
 			if err != nil {
 				klog.Errorf("skipping path: %s", err)
 				continue
 			}
-			processedPaths = append(processedPaths, p)
+			processedPaths = append(processedPaths, path)
 		}
-		if len(processedPaths) == 0 {
-			klog.Errorf("skipping key: no paths in key %s", key)
-		} else {
-			toOmit.processedItems[key] = processedPaths
-		}
+		toOmit.Items[key] = processedPaths
+
 	}
 	return nil
 }
@@ -111,14 +106,14 @@ type ReferenceTemplate struct {
 	Config ReferenceTemplateConfig `json:"config,omitempty"`
 }
 
-func (rf ReferenceTemplate) FeildsToOmit(fieldsToOmit FieldsToOmit) []Path {
-	result := make([]Path, 0)
+func (rf ReferenceTemplate) FeildsToOmit(fieldsToOmit FieldsToOmit) []*Path {
+	result := make([]*Path, 0)
 	if len(rf.Config.FieldsToOmitRefs) == 0 {
-		return fieldsToOmit.processedItems[fieldsToOmit.Config.DefaultKey]
+		return fieldsToOmit.Items[fieldsToOmit.Config.DefaultKey]
 	}
 
 	for _, feildsRef := range rf.Config.FieldsToOmitRefs {
-		if feilds, ok := fieldsToOmit.processedItems[feildsRef]; ok {
+		if feilds, ok := fieldsToOmit.Items[feildsRef]; ok {
 			result = append(result, feilds...)
 		} else {
 			klog.Warningf(fieldsToOmitRefsNotFound, feildsRef)
@@ -180,25 +175,27 @@ func (r *Reference) getMissingCRs(matchedTemplates map[string]bool) (map[string]
 
 const builtInPathsKey = "cluster-compare-built-in"
 
-var builtInPaths = []string{
-	"metadata.resourceVersion",
-	"metadata.generation",
-	"metadata.uid",
-	"metadata.generateName",
-	"metadata.creationTimestamp",
-	"metadata.finalizers",
-	`"kubectl.kubernetes.io/last-applied-configuration"`,
-	`metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"`,
-	"status",
+var builtInPaths = []*Path{
+	{Path: "metadata.resourceVersion"},
+	{Path: "metadata.generation"},
+	{Path: "metadata.uid"},
+	{Path: "metadata.generateName"},
+	{Path: "metadata.creationTimestamp"},
+	{Path: "metadata.finalizers"},
+	{Path: `"kubectl.kubernetes.io/last-applied-configuration"`},
+	{Path: `metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"`},
+	{Path: "status"},
 }
 
 type Path struct {
-	parts []string
+	Path    string `json:"path"`
+	IsRegex bool   `json:"isRegex"`
+	parts   []string
 }
 
-func NewPath(path string) (Path, error) {
-	fields, err := splitFields(path)
-	return Path{parts: fields}, err
+func (p *Path) Process() (err error) {
+	p.parts, err = splitFields(p.Path)
+	return err
 }
 
 // splitFields splits a dot delmited path into parts

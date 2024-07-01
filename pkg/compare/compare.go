@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"text/template"
@@ -518,7 +519,7 @@ func (o *Options) Run() error {
 type InfoObject struct {
 	injectedObjFromTemplate *unstructured.Unstructured
 	clusterObj              *unstructured.Unstructured
-	FieldsToOmit            []Path
+	FieldsToOmit            []*Path
 	allowMerge              bool
 }
 
@@ -550,14 +551,57 @@ func (obj InfoObject) Merged() (runtime.Object, error) {
 	return obj.injectedObjFromTemplate, err
 }
 
-func omitFields(object map[string]any, fields []Path) {
-	for _, field := range fields {
-		unstructured.RemoveNestedField(object, field.parts...)
-		for i := 0; i <= len(field.parts); i++ {
-			val, _, _ := unstructured.NestedFieldNoCopy(object, field.parts[:len(field.parts)-i]...)
-			if mapping, ok := val.(map[string]any); ok && len(mapping) == 0 {
-				unstructured.RemoveNestedField(object, field.parts[:len(field.parts)-i]...)
+func findMatchingKeys(object map[string]any, pattern string) []string {
+	matchingKeys := make([]string, 0)
+	r := regexp.MustCompile(pattern)
+	for key := range object {
+		if r.MatchString(key) {
+			matchingKeys = append(matchingKeys, key)
+		}
+	}
+	return matchingKeys
+}
+
+func findMatchingPaths(object map[string]any, parts, currentPath []string) [][]string {
+	if len(parts) == 0 {
+		return [][]string{currentPath}
+	}
+	matchingPaths := make([][]string, 0)
+	matching := findMatchingKeys(object, parts[0])
+	for _, m := range matching {
+		newPath := make([]string, 0)
+		newPath = append(newPath, currentPath...)
+		newPath = append(newPath, m)
+		val, _, _ := unstructured.NestedFieldNoCopy(object, m)
+		if obj, ok := val.(map[string]any); ok {
+			foundPaths := findMatchingPaths(obj, parts[1:], newPath)
+			matchingPaths = append(matchingPaths, foundPaths...)
+		} else {
+			matchingPaths = append(matchingPaths, newPath)
+		}
+	}
+	return matchingPaths
+}
+
+func omitPath(object map[string]any, pathParts []string) {
+	unstructured.RemoveNestedField(object, pathParts...)
+	for i := len(pathParts) - 1; i >= 0; i-- {
+		val, _, _ := unstructured.NestedFieldNoCopy(object, pathParts[:i]...)
+		if mapping, ok := val.(map[string]any); ok && len(mapping) == 0 {
+			unstructured.RemoveNestedField(object, pathParts[:i]...)
+		}
+	}
+}
+
+func omitFields(object map[string]any, paths []*Path) {
+	for _, path := range paths {
+		if path.IsRegex {
+			paths := findMatchingPaths(object, path.parts, []string{})
+			for _, p := range paths {
+				omitPath(object, p)
 			}
+		} else {
+			omitPath(object, path.parts)
 		}
 	}
 }
