@@ -484,14 +484,14 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 			_, err = fmt.Fprint(w, string(body))
 			require.NoError(t, err)
 		}))
-		require.NoError(t, cmd.Flags().Set("reference", svr.URL))
+		require.NoError(t, cmd.Flags().Set("reference", svr.URL+"/metadata.yaml"))
 		t.Cleanup(func() {
 			svr.Close()
 		})
 
 	case LocalRef:
 		if !test.leaveTemplateDirEmpty {
-			require.NoError(t, cmd.Flags().Set("reference", path.Join(test.getTestDir(), TestRefDirName)))
+			require.NoError(t, cmd.Flags().Set("reference", path.Join(test.getTestDir(), TestRefDirName, "metadata.yaml")))
 		}
 	}
 	return cmd

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
@@ -94,11 +95,10 @@ var (
 )
 
 const (
-	ReferenceFileName       = "metadata.yaml"
-	noRefDirectoryWasPassed = "\"Reference directory is required\""
-	refDirNotExistsError    = "\"Reference directory doesn't exist\""
-	emptyTypes              = "templates don't contain any types (kind) of resources that are supported by the cluster"
-	DiffSeparator           = "**********************************\n"
+	noRefManifestWasPassed    = "\"Reference manifest is required\""
+	refManifestNotExistsError = "\"Reference manifest doesn't exist\""
+	emptyTypes                = "templates don't contain any types (kind) of resources that are supported by the cluster"
+	DiffSeparator             = "**********************************\n"
 )
 
 const (
@@ -110,7 +110,7 @@ var OutputFormats = []string{Json, Yaml}
 
 type Options struct {
 	CRs                resource.FilenameOptions
-	templatesDir       string
+	referenceFilePath  string
 	diffConfigFileName string
 	diffAll            bool
 	verboseOutput      bool
@@ -175,7 +175,7 @@ func NewCmd(f kcmdutil.Factory, streams genericiooptions.IOStreams) *cobra.Comma
 			" but more memory, I/O and CPU over that shorter period of time.")
 	kcmdutil.AddFilenameOptionFlags(cmd, &options.CRs, "contains the configuration to diff")
 	cmd.Flags().StringVarP(&options.diffConfigFileName, "diff-config", "c", "", "Path to the user config file")
-	cmd.Flags().StringVarP(&options.templatesDir, "reference", "r", "", "Path to directory including reference.")
+	cmd.Flags().StringVarP(&options.referenceFilePath, "reference", "r", "", "Path to reference manifest file.")
 	cmd.Flags().BoolVar(&options.ShowManagedFields, "show-managed-fields", options.ShowManagedFields, "If true, include managed fields in the diff.")
 	cmd.Flags().BoolVarP(&options.diffAll, "all-resources", "A", options.diffAll,
 		"If present, In live mode will try to match all resources that are from the types mentioned in the reference. "+
@@ -224,24 +224,43 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 	var fs fs.FS
 	o.builder = f.NewBuilder()
 
-	if o.templatesDir == "" {
-		return kcmdutil.UsageErrorf(cmd, noRefDirectoryWasPassed)
+	if o.referenceFilePath == "" {
+		return kcmdutil.UsageErrorf(cmd, noRefManifestWasPassed)
 	}
-	if _, err := os.Stat(o.templatesDir); os.IsNotExist(err) && !isURL(o.templatesDir) {
-		return fmt.Errorf(refDirNotExistsError)
+	if _, err := os.Stat(o.referenceFilePath); os.IsNotExist(err) && !isURL(o.referenceFilePath) {
+		return fmt.Errorf(refManifestNotExistsError)
 	}
 
-	if isURL(o.templatesDir) {
-		fs = HTTPFS{baseURL: o.templatesDir, httpGet: httpgetImpl}
+	var filename string
+
+	if isURL(o.referenceFilePath) {
+		refUrl, err := url.Parse(o.referenceFilePath)
+		if err != nil {
+			return fmt.Errorf("failed to parse reference url %s: %w", o.referenceFilePath, err)
+		}
+		fmt.Println(refUrl)
+		urlPath, err := url.PathUnescape(refUrl.Path)
+		if err != nil {
+			return fmt.Errorf("failed to parse reference url path %s: %w", refUrl.Path, err)
+		}
+		filename = filepath.Base(urlPath)
+		dir := filepath.Dir(urlPath)
+		if dir == "." {
+			dir = ""
+		}
+		refUrl.Path = dir
+
+		fs = HTTPFS{baseURL: refUrl.String(), httpGet: httpgetImpl}
 	} else {
-		rootPath, err := filepath.Abs(o.templatesDir)
+		rootPath, err := filepath.Abs(o.referenceFilePath)
 		if err != nil {
 			return fmt.Errorf("failed to get absolute path: %w", err)
 		}
-		fs = os.DirFS(rootPath)
+		filename = filepath.Base(rootPath)
+		fs = os.DirFS(filepath.Dir(rootPath))
 	}
 
-	o.ref, err = getReference(fs)
+	o.ref, err = getReference(fs, filename)
 	if err != nil {
 		return err
 	}
