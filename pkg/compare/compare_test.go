@@ -331,7 +331,7 @@ error code:2`),
 		},
 		{
 			name:   "Diff in Custom Omitted Fields Isnt Shown With Regex",
-			mode:   []Mode{{Live, LocalRef}, {Local, LocalRef}, {Local, URL}},
+			mode:   []Mode{DefaultMode},
 			checks: defaultChecks,
 		},
 		{
