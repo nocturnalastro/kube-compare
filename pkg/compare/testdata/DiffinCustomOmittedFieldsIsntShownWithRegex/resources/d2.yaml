@@ -15,6 +15,8 @@ spec:
     metadata:
       labels:
         k8s-app: dashboard-metrics-scraper
+        olm.operatorgroup.uid/3224f40f-2ef3-472a-8550-64517c441c7d: ""
+
     spec:
       securityContext:
         seccompProfile:
