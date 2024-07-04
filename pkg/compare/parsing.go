@@ -53,7 +53,7 @@ type FieldsToOmit struct {
 	processedItems map[string][]Path
 }
 
-func (toOmit *FieldsToOmit) init() error {
+func (toOmit *FieldsToOmit) process() error {
 	if toOmit.Items == nil {
 		toOmit.Items = make(map[string][]string)
 	}
@@ -249,7 +249,7 @@ func getReference(fsys fs.FS) (Reference, error) {
 	if err != nil {
 		return result, err
 	}
-	err = result.FieldsToOmit.init()
+	err = result.FieldsToOmit.process()
 	if err != nil {
 		return result, err
 	}
