@@ -14,6 +14,6 @@ fieldsToOmit:
     defaultKey: IDontExist
   items:
     custom:
-      - path: spec.selector.matchLabels.k8s-app
-      - path: metadata.labels.k8s-app
-      - path: spec.template.metadata.labels.k8s-app
+      - spec.selector.matchLabels.k8s-app
+      - metadata.labels.k8s-app
+      - spec.template.metadata.labels.k8s-app

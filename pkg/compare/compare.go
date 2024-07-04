@@ -518,7 +518,7 @@ func (o *Options) Run() error {
 type InfoObject struct {
 	injectedObjFromTemplate *unstructured.Unstructured
 	clusterObj              *unstructured.Unstructured
-	FieldsToOmit            []*Path
+	FieldsToOmit            []Path
 	allowMerge              bool
 }
 
@@ -582,7 +582,7 @@ func findMatchingPaths(object map[string]any, parts []PathPart, currentPath []st
 
 	// find matched to regex
 	matching := make([]string, 0)
-	for key, _ := range object {
+	for key := range object {
 		if nextPart.regex.MatchString(key) {
 			matching = append(matching, key)
 		}
@@ -614,7 +614,7 @@ func omitPath(object map[string]any, pathParts []string) {
 	}
 }
 
-func omitFields(object map[string]any, paths []*Path) {
+func omitFields(object map[string]any, paths []Path) {
 	for _, path := range paths {
 		paths := findMatchingPaths(object, path.parts, []string{})
 		for _, p := range paths {
