@@ -240,7 +240,7 @@ func splitFields(path string) ([]PathPart, error) {
 	for _, e := range splitPath {
 		p := PathPart{part: e}
 		if x, ok := replaced[e]; ok {
-			if strings.Contains(x, "`") {
+			if strings.HasPrefix(x, "`") && strings.HasSuffix(x, "`") {
 				p.part = strings.Trim(x, "`")
 				p.regex, err = regexp.Compile(p.part)
 				if err != nil {
