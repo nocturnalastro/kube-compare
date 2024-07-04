@@ -53,6 +53,8 @@ type FieldsToOmit struct {
 	processedItems map[string][]Path
 }
 
+// Setup FieldsToOmit to be used by setting defaults
+// and processing the item strings into paths
 func (toOmit *FieldsToOmit) process() error {
 	if toOmit.Items == nil {
 		toOmit.Items = make(map[string][]string)
