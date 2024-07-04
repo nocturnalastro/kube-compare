@@ -95,6 +95,8 @@ func (rf ReferenceTemplate) FeildsToOmit(ref Reference) []Path {
 	for _, feildsRef := range rf.Config.FieldsToOmitRefs {
 		if feilds, ok := ref.processedFieldsToOmit[feildsRef]; ok {
 			result = append(result, feilds...)
+		} else {
+			klog.Warningf(`skipping fieldsToOmitRefs entry: "%s" not found it fieldsToOmit Items`, feildsRef)
 		}
 	}
 	return result

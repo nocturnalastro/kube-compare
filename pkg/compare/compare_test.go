@@ -325,6 +325,11 @@ error code:2`),
 			checks: defaultChecks,
 		},
 		{
+			name:   "Custom Fields To Omit Ref Entry Not Found",
+			mode:   []Mode{DefaultMode},
+			checks: defaultChecks,
+		},
+		{
 			name:          "When Using Diff All Flag - All Unmatched Resources Appear In Summary",
 			mode:          []Mode{DefaultMode},
 			checks:        defaultChecks,
