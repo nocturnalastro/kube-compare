@@ -37,6 +37,12 @@ const (
 	Optional ComponentType = "Optional"
 )
 
+const (
+	fieldsToOmitBuiltInOverwritten = `fieldsToOmit.Map contains the key "%s", this will be overwritten with default values`
+	fieldsToOmitDefaultNotFound    = `fieldsToOmit's defaultKey "%s" not found in items`
+	fieldsToOmitRefsNotFound       = `skipping fieldsToOmitRefs entry: "%s" not found it fieldsToOmit Items`
+)
+
 type FieldsToOmitConfig struct {
 	DefaultKey string `json:"defaultKey,omitempty"`
 }
@@ -63,7 +69,7 @@ func (toOmit *FieldsToOmit) init() error {
 	}
 
 	if _, ok := toOmit.Items[toOmit.Config.DefaultKey]; !ok {
-		return fmt.Errorf("fieldsToOmit's defaultKey \"%s\" not found in items", toOmit.Config.DefaultKey)
+		return fmt.Errorf(fieldsToOmitDefaultNotFound, toOmit.Config.DefaultKey)
 	}
 
 	toOmit.processedItems = make(map[string][]Path)
@@ -113,7 +119,7 @@ func (rf ReferenceTemplate) FeildsToOmit(fieldsToOmit FieldsToOmit) []Path {
 		if feilds, ok := fieldsToOmit.processedItems[feildsRef]; ok {
 			result = append(result, feilds...)
 		} else {
-			klog.Warningf(`skipping fieldsToOmitRefs entry: "%s" not found it fieldsToOmit Items`, feildsRef)
+			klog.Warningf(fieldsToOmitRefsNotFound, feildsRef)
 		}
 	}
 	return result
@@ -229,13 +235,12 @@ func splitFields(path string) ([]string, error) {
 }
 
 const (
-	refConfNotExistsError          = "Reference config file not found. error: "
-	refConfigNotInFormat           = "Reference config isn't in correct format. error: "
-	userConfNotExistsError         = "User Config File not found. error: "
-	userConfigNotInFormat          = "User config file isn't in correct format. error: "
-	templatesCantBeParsed          = "an error occurred while parsing template: %s specified in the config. error: %v"
-	templatesFunctionsCantBeParsed = "an error occurred while parsing the template function files specified in the config. error: %v"
-	fieldsToOmitBuiltInOverwritten = "fieldsToOmit.Map contains the key \"%s\", this will be overwritten with default values"
+	refConfNotExistsError          = "Reference config file not found. error: %w"
+	refConfigNotInFormat           = "Reference config isn't in correct format. error: %w"
+	userConfNotExistsError         = "User Config File not found. error: %w"
+	userConfigNotInFormat          = "User config file isn't in correct format. error: %w"
+	templatesCantBeParsed          = "an error occurred while parsing template: %s specified in the config. error: %w"
+	templatesFunctionsCantBeParsed = "an error occurred while parsing the template function files specified in the config. error: %w"
 )
 
 func getReference(fsys fs.FS) (Reference, error) {
@@ -254,11 +259,11 @@ func getReference(fsys fs.FS) (Reference, error) {
 func parseYaml[T any](fsys fs.FS, filePath string, structType *T, fileNotFoundError, parsingError string) error {
 	file, err := fs.ReadFile(fsys, filePath)
 	if err != nil {
-		return fmt.Errorf("%s%w", fileNotFoundError, err)
+		return fmt.Errorf(fileNotFoundError, err)
 	}
 	err = yaml.UnmarshalStrict(file, structType)
 	if err != nil {
-		return fmt.Errorf("%s%w", parsingError, err)
+		return fmt.Errorf(parsingError, err)
 	}
 	return nil
 }
