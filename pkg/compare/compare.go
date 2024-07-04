@@ -588,16 +588,17 @@ func findMatchingPaths(object map[string]any, parts []PathPart, currentPath []st
 		}
 	}
 
+	// find paths for matching keys
 	matchingPaths := make([][]string, 0)
 	for _, m := range matching {
 		newPath := make([]string, 0)
 		newPath = append(newPath, currentPath...)
 		newPath = append(newPath, m)
-		val, _, _ := unstructured.NestedFieldNoCopy(object, m)
+		val, found, err := unstructured.NestedFieldNoCopy(object, m)
 		if obj, ok := val.(map[string]any); ok {
 			foundPaths := findMatchingPaths(obj, parts[1:], newPath)
 			matchingPaths = append(matchingPaths, foundPaths...)
-		} else {
+		} else if found && err == nil {
 			matchingPaths = append(matchingPaths, newPath)
 		}
 	}
