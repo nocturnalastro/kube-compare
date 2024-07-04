@@ -20,15 +20,15 @@ import (
 )
 
 type Reference struct {
-	Parts                 []Part              `json:"parts"`
-	TemplateFunctionFiles []string            `json:"templateFunctionFiles,omitempty"`
-	FieldsToOmit          map[string][]string `json:"fieldsToOmit,omitempty"`
+	Parts                 []Part       `json:"parts"`
+	TemplateFunctionFiles []string     `json:"templateFunctionFiles,omitempty"`
+	FieldsToOmit          FieldsToOmit `json:"fieldsToOmit,omitempty"`
 	processedFieldsToOmit map[string][]Path
 }
 
 func (r *Reference) ProcessFieldsToOmit() error {
 	r.processedFieldsToOmit = make(map[string][]Path)
-	for key, pathsArray := range r.FieldsToOmit {
+	for key, pathsArray := range r.FieldsToOmit.Items {
 		processedPaths := make([]Path, 0)
 		for _, path := range pathsArray {
 			p, err := NewPath(path)
@@ -60,6 +60,15 @@ const (
 	Optional ComponentType = "Optional"
 )
 
+type FieldsToOmitConfig struct {
+	DefaultKey string `json:"defaultKey,omitempty"`
+}
+
+type FieldsToOmit struct {
+	Config FieldsToOmitConfig  `json:"config,omitempty"`
+	Items  map[string][]string `json:"items,omitempty"`
+}
+
 type Component struct {
 	Name              string               `json:"name"`
 	Type              ComponentType        `json:"type,omitempty"`
@@ -67,24 +76,24 @@ type Component struct {
 	OptionalTemplates []*ReferenceTemplate `json:"optionalTemplates,omitempty"`
 }
 type ReferenceTemplateConfig struct {
-	AllowMerge bool `json:"ignore-unspecified-fields,omitempty"`
+	AllowMerge       bool     `json:"ignore-unspecified-fields,omitempty"`
+	FieldsToOmitRefs []string `json:"fieldsToOmitRefs,omitempty"`
 }
 
 type ReferenceTemplate struct {
 	*template.Template
-	Path             string                  `json:"path"`
-	Config           ReferenceTemplateConfig `json:"config,omitempty"`
-	FieldsToOmitRefs []string                `json:"fieldsToOmitRefs,omitempty"`
+	Path   string                  `json:"path"`
+	Config ReferenceTemplateConfig `json:"config,omitempty"`
 }
 
-func (rf ReferenceTemplate) FeildsToOmit(feildsToOmit map[string][]Path) []Path {
+func (rf ReferenceTemplate) FeildsToOmit(ref Reference) []Path {
 	result := make([]Path, 0)
-	if len(rf.FieldsToOmitRefs) == 0 {
-		return feildsToOmit[defaultFieldsToOmitKey]
+	if len(rf.Config.FieldsToOmitRefs) == 0 {
+		return ref.processedFieldsToOmit[ref.FieldsToOmit.Config.DefaultKey]
 	}
 
-	for _, ref := range rf.FieldsToOmitRefs {
-		if feilds, ok := feildsToOmit[ref]; ok {
+	for _, feildsRef := range rf.Config.FieldsToOmitRefs {
+		if feilds, ok := ref.processedFieldsToOmit[feildsRef]; ok {
 			result = append(result, feilds...)
 		}
 	}
@@ -142,23 +151,18 @@ func (r *Reference) getMissingCRs(matchedTemplates map[string]bool) (map[string]
 	return crs, count
 }
 
-const (
-	defaultFieldsToOmitKey = "default"
-	builtInPathsKey        = "cluster-compare-built-in"
-)
+const builtInPathsKey = "cluster-compare-built-in"
 
-var defaultFieldsToOmit = map[string][]string{
-	defaultFieldsToOmitKey: {
-		"metadata.resourceVersion",
-		"metadata.generation",
-		"metadata.uid",
-		"metadata.generateName",
-		"metadata.creationTimestamp",
-		"metadata.finalizers",
-		`"kubectl.kubernetes.io/last-applied-configuration"`,
-		`metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"`,
-		"status",
-	},
+var builtInPaths = []string{
+	"metadata.resourceVersion",
+	"metadata.generation",
+	"metadata.uid",
+	"metadata.generateName",
+	"metadata.creationTimestamp",
+	"metadata.finalizers",
+	`"kubectl.kubernetes.io/last-applied-configuration"`,
+	`metadata.annotations."kubectl.kubernetes.io/last-applied-configuration"`,
+	"status",
 }
 
 type Path struct {
@@ -212,6 +216,7 @@ const (
 	userConfigNotInFormat          = "User config file isn't in correct format. error: "
 	templatesCantBeParsed          = "an error occurred while parsing template: %s specified in the config. error: %v"
 	templatesFunctionsCantBeParsed = "an error occurred while parsing the template function files specified in the config. error: %v"
+	fieldsToOmitBuiltInOverwritten = "fieldsToOmit.Map contains the key \"%s\", this will be overwritten with default values"
 )
 
 func getReference(fsys fs.FS) (Reference, error) {
@@ -220,16 +225,23 @@ func getReference(fsys fs.FS) (Reference, error) {
 	if err != nil {
 		return result, err
 	}
-	if len(result.FieldsToOmit) == 0 {
-		result.FieldsToOmit = defaultFieldsToOmit
+
+	if result.FieldsToOmit.Items == nil {
+		result.FieldsToOmit.Items = make(map[string][]string)
 	}
 
-	// Make defaults available as "cluster-compare-built-in"
-	result.FieldsToOmit[builtInPathsKey] = defaultFieldsToOmit[defaultFieldsToOmitKey]
+	if _, ok := result.FieldsToOmit.Items[builtInPathsKey]; ok {
+		klog.Warningf(fieldsToOmitBuiltInOverwritten, builtInPathsKey)
+	}
 
-	// If no default is provided use our default
-	if _, ok := result.FieldsToOmit[defaultFieldsToOmitKey]; !ok {
-		result.FieldsToOmit[defaultFieldsToOmitKey] = defaultFieldsToOmit[defaultFieldsToOmitKey]
+	result.FieldsToOmit.Items[builtInPathsKey] = builtInPaths
+
+	if result.FieldsToOmit.Config.DefaultKey == "" {
+		result.FieldsToOmit.Config.DefaultKey = builtInPathsKey
+	}
+
+	if _, ok := result.FieldsToOmit.Items[result.FieldsToOmit.Config.DefaultKey]; !ok {
+		return result, fmt.Errorf("fieldsToOmit's defaultKey \"%s\" not found in items", result.FieldsToOmit.Config.DefaultKey)
 	}
 
 	err = result.ProcessFieldsToOmit()
