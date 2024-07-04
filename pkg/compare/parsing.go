@@ -23,29 +23,6 @@ type Reference struct {
 	Parts                 []Part       `json:"parts"`
 	TemplateFunctionFiles []string     `json:"templateFunctionFiles,omitempty"`
 	FieldsToOmit          FieldsToOmit `json:"fieldsToOmit,omitempty"`
-	processedFieldsToOmit map[string][]Path
-}
-
-func (r *Reference) ProcessFieldsToOmit() error {
-	r.processedFieldsToOmit = make(map[string][]Path)
-	for key, pathsArray := range r.FieldsToOmit.Items {
-		processedPaths := make([]Path, 0)
-		for _, path := range pathsArray {
-			p, err := NewPath(path)
-			if err != nil {
-				klog.Errorf("skipping path: %s", err)
-				continue
-			}
-			processedPaths = append(processedPaths, p)
-		}
-		if len(processedPaths) == 0 {
-			klog.Errorf("skipping key: no paths in key %s", key)
-		} else {
-			r.processedFieldsToOmit[key] = processedPaths
-		}
-	}
-
-	return nil
 }
 
 type Part struct {
@@ -65,8 +42,48 @@ type FieldsToOmitConfig struct {
 }
 
 type FieldsToOmit struct {
-	Config FieldsToOmitConfig  `json:"config,omitempty"`
-	Items  map[string][]string `json:"items,omitempty"`
+	Config         FieldsToOmitConfig  `json:"config,omitempty"`
+	Items          map[string][]string `json:"items,omitempty"`
+	processedItems map[string][]Path
+}
+
+func (toOmit *FieldsToOmit) init() error {
+	if toOmit.Items == nil {
+		toOmit.Items = make(map[string][]string)
+	}
+
+	if _, ok := toOmit.Items[builtInPathsKey]; ok {
+		klog.Warningf(fieldsToOmitBuiltInOverwritten, builtInPathsKey)
+	}
+
+	toOmit.Items[builtInPathsKey] = builtInPaths
+
+	if toOmit.Config.DefaultKey == "" {
+		toOmit.Config.DefaultKey = builtInPathsKey
+	}
+
+	if _, ok := toOmit.Items[toOmit.Config.DefaultKey]; !ok {
+		return fmt.Errorf("fieldsToOmit's defaultKey \"%s\" not found in items", toOmit.Config.DefaultKey)
+	}
+
+	toOmit.processedItems = make(map[string][]Path)
+	for key, pathsArray := range toOmit.Items {
+		processedPaths := make([]Path, 0)
+		for _, path := range pathsArray {
+			p, err := NewPath(path)
+			if err != nil {
+				klog.Errorf("skipping path: %s", err)
+				continue
+			}
+			processedPaths = append(processedPaths, p)
+		}
+		if len(processedPaths) == 0 {
+			klog.Errorf("skipping key: no paths in key %s", key)
+		} else {
+			toOmit.processedItems[key] = processedPaths
+		}
+	}
+	return nil
 }
 
 type Component struct {
@@ -86,14 +103,14 @@ type ReferenceTemplate struct {
 	Config ReferenceTemplateConfig `json:"config,omitempty"`
 }
 
-func (rf ReferenceTemplate) FeildsToOmit(ref Reference) []Path {
+func (rf ReferenceTemplate) FeildsToOmit(fieldsToOmit FieldsToOmit) []Path {
 	result := make([]Path, 0)
 	if len(rf.Config.FieldsToOmitRefs) == 0 {
-		return ref.processedFieldsToOmit[ref.FieldsToOmit.Config.DefaultKey]
+		return fieldsToOmit.processedItems[fieldsToOmit.Config.DefaultKey]
 	}
 
 	for _, feildsRef := range rf.Config.FieldsToOmitRefs {
-		if feilds, ok := ref.processedFieldsToOmit[feildsRef]; ok {
+		if feilds, ok := fieldsToOmit.processedItems[feildsRef]; ok {
 			result = append(result, feilds...)
 		} else {
 			klog.Warningf(`skipping fieldsToOmitRefs entry: "%s" not found it fieldsToOmit Items`, feildsRef)
@@ -227,26 +244,7 @@ func getReference(fsys fs.FS) (Reference, error) {
 	if err != nil {
 		return result, err
 	}
-
-	if result.FieldsToOmit.Items == nil {
-		result.FieldsToOmit.Items = make(map[string][]string)
-	}
-
-	if _, ok := result.FieldsToOmit.Items[builtInPathsKey]; ok {
-		klog.Warningf(fieldsToOmitBuiltInOverwritten, builtInPathsKey)
-	}
-
-	result.FieldsToOmit.Items[builtInPathsKey] = builtInPaths
-
-	if result.FieldsToOmit.Config.DefaultKey == "" {
-		result.FieldsToOmit.Config.DefaultKey = builtInPathsKey
-	}
-
-	if _, ok := result.FieldsToOmit.Items[result.FieldsToOmit.Config.DefaultKey]; !ok {
-		return result, fmt.Errorf("fieldsToOmit's defaultKey \"%s\" not found in items", result.FieldsToOmit.Config.DefaultKey)
-	}
-
-	err = result.ProcessFieldsToOmit()
+	err = result.FieldsToOmit.init()
 	if err != nil {
 		return result, err
 	}

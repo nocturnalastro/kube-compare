@@ -481,7 +481,7 @@ func (o *Options) Run() error {
 		obj := InfoObject{
 			injectedObjFromTemplate: localRef,
 			clusterObj:              clusterCR,
-			FieldsToOmit:            temp.FeildsToOmit(o.ref),
+			FieldsToOmit:            temp.FeildsToOmit(o.ref.FieldsToOmit),
 			allowMerge:              temp.Config.AllowMerge,
 		}
 		diffOutput, err := runDiff(obj, o.IOStreams, o.ShowManagedFields)
