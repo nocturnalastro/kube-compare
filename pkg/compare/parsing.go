@@ -187,10 +187,14 @@ var builtInPaths = []*Path{
 	{Path: "status"},
 }
 
+type PathPart struct {
+	part  string
+	regex *regexp.Regexp
+}
+
 type Path struct {
-	Path    string `json:"path"`
-	IsRegex bool   `json:"isRegex"`
-	parts   []string
+	Path  string `json:"path"`
+	parts []PathPart
 }
 
 func (p *Path) Process() (err error) {
@@ -201,13 +205,19 @@ func (p *Path) Process() (err error) {
 // splitFields splits a dot delmited path into parts
 //
 // unless the dot is within quotes
-func splitFields(path string) ([]string, error) {
+func splitFields(path string) ([]PathPart, error) {
+	result := make([]PathPart, 0)
+
 	path = strings.TrimLeft(path, ".")
 	// 1. Find all sets of quotes
-	r := regexp.MustCompile(`(?U:(".*"))`)
-	matches := r.FindAllStringSubmatch(path, -1)
+	quotes := regexp.MustCompile("(?U:([\"|`].*[\"|`]))")
+
+	matches := quotes.FindAllStringSubmatch(path, -1)
 	if len(matches) == 0 {
-		return strings.Split(path, "."), nil
+		for _, s := range strings.Split(path, ".") {
+			result = append(result, PathPart{part: s})
+		}
+		return result, nil
 	}
 
 	// 2. replace quoted blocks with placeholder text
@@ -219,18 +229,29 @@ func splitFields(path string) ([]string, error) {
 		newPath = strings.Replace(newPath, matchParts[1], v, 1)
 	}
 
-	if len(r.FindAllStringSubmatch(newPath, -1)) > 0 {
-		return strings.Split(newPath, "."), fmt.Errorf("failed to remove quotes from path %s", path)
+	if len(quotes.FindAllStringSubmatch(newPath, -1)) > 0 {
+		return result, fmt.Errorf("failed to remove quotes from path %s", path)
 	}
 	// 3. split string with place holders on dots
 	splitPath := strings.Split(newPath, ".")
 	// 4. replace place holder with origonal text without the quotes
-	for i, e := range splitPath {
+	var err error
+	for _, e := range splitPath {
+		p := PathPart{part: e}
 		if x, ok := replaced[e]; ok {
-			splitPath[i] = strings.Trim(x, `"`)
+			if strings.Contains(x, "`") {
+				p.part = strings.Trim(x, "`")
+				p.regex, err = regexp.Compile(p.part)
+				if err != nil {
+					return result, err
+				}
+			} else {
+				p.part = strings.Trim(x, `"`)
+			}
 		}
+		result = append(result, p)
 	}
-	return splitPath, nil
+	return result, nil
 }
 
 const (

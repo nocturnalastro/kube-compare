@@ -11,7 +11,6 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"text/template"
@@ -551,23 +550,45 @@ func (obj InfoObject) Merged() (runtime.Object, error) {
 	return obj.injectedObjFromTemplate, err
 }
 
-func findMatchingKeys(object map[string]any, pattern string) []string {
-	matchingKeys := make([]string, 0)
-	r := regexp.MustCompile(pattern)
-	for key := range object {
-		if r.MatchString(key) {
-			matchingKeys = append(matchingKeys, key)
-		}
-	}
-	return matchingKeys
-}
-
-func findMatchingPaths(object map[string]any, parts, currentPath []string) [][]string {
+func findMatchingPaths(object map[string]any, parts []PathPart, currentPath []string) [][]string {
 	if len(parts) == 0 {
 		return [][]string{currentPath}
 	}
+
+	// skip over parts that aren't regex
+	nextPart := parts[0]
+	pathToAppend := make([]string, 0)
+	for _, p := range parts {
+		if p.regex == nil {
+			pathToAppend = append(pathToAppend, p.part)
+		} else {
+			nextPart = p
+		}
+	}
+	currentPath = append(currentPath, pathToAppend...)
+
+	// we've completed the list
+	if nextPart.regex == nil {
+		return [][]string{currentPath}
+	}
+
+	// Get to the correct point in the current structure
+	val, _, _ := unstructured.NestedFieldNoCopy(object, pathToAppend...)
+	if obj, ok := val.(map[string]any); ok {
+		object = obj
+	} else {
+		return [][]string{} // Path isn't valid
+	}
+
+	// find matched to regex
+	matching := make([]string, 0)
+	for key, _ := range object {
+		if nextPart.regex.MatchString(key) {
+			matching = append(matching, key)
+		}
+	}
+
 	matchingPaths := make([][]string, 0)
-	matching := findMatchingKeys(object, parts[0])
 	for _, m := range matching {
 		newPath := make([]string, 0)
 		newPath = append(newPath, currentPath...)
@@ -595,13 +616,9 @@ func omitPath(object map[string]any, pathParts []string) {
 
 func omitFields(object map[string]any, paths []*Path) {
 	for _, path := range paths {
-		if path.IsRegex {
-			paths := findMatchingPaths(object, path.parts, []string{})
-			for _, p := range paths {
-				omitPath(object, p)
-			}
-		} else {
-			omitPath(object, path.parts)
+		paths := findMatchingPaths(object, path.parts, []string{})
+		for _, p := range paths {
+			omitPath(object, p)
 		}
 	}
 }
