@@ -1,0 +1,18 @@
+Parts:
+  - name: ExamplePart
+    Components:
+      - name: Dashboard
+        type: Required
+        requiredTemplates:
+          - path: deploymentMetrics.yaml
+
+fieldsToOmit:
+  config:
+    defaultKey: deployment
+  items:
+    deployment:
+      - spec.selector.matchLabels.k8s-app
+      - metadata.labels.k8s-app
+      - spec.template.metadata.labels.k8s-app
+      - spec.template.spec.containers.0.args.2
+      - spec.template.spec.containers.0.volumeMounts.2

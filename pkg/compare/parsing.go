@@ -212,6 +212,7 @@ func splitFields(path string) ([]PathPart, error) {
 	path = strings.TrimLeft(path, ".")
 	// 1. Find all sets of quotes
 	quotes := regexp.MustCompile("(?U:([\"|`].*[\"|`]))")
+	// TODO: Support single quotes
 
 	matches := quotes.FindAllStringSubmatch(path, -1)
 	if len(matches) == 0 {

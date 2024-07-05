@@ -335,6 +335,12 @@ error code:2`),
 			checks: defaultChecks,
 		},
 		{
+			name:   "Diff in Custom Omitted Fields Isnt Shown In List",
+			mode:   []Mode{DefaultMode},
+			checks: defaultChecks,
+		},
+
+		{
 			name:          "When Using Diff All Flag - All Unmatched Resources Appear In Summary",
 			mode:          []Mode{DefaultMode},
 			checks:        defaultChecks,
