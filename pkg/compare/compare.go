@@ -524,8 +524,10 @@ type InfoObject struct {
 
 // Live Returns the cluster version of the object
 func (obj InfoObject) Live() runtime.Object {
-	omitFields(obj.clusterObj.Object, obj.FieldsToOmit)
-	return obj.clusterObj
+	o := omitFields(obj.clusterObj.Object, obj.FieldsToOmit)
+	res := unstructured.Unstructured{Object: o}
+	obj.clusterObj.Object = o
+	return &res
 }
 
 type MergeError struct {
@@ -546,20 +548,94 @@ func (obj InfoObject) Merged() (runtime.Object, error) {
 			return obj.injectedObjFromTemplate, &MergeError{obj: &obj, err: err}
 		}
 	}
-	omitFields(obj.injectedObjFromTemplate.Object, obj.FieldsToOmit)
-	return obj.injectedObjFromTemplate, err
+	omited := omitFields(obj.injectedObjFromTemplate.Object, obj.FieldsToOmit)
+	res := unstructured.Unstructured{Object: omited}
+	return &res, err
 }
 
-func omitFields(object map[string]any, fields []Path) {
-	for _, field := range fields {
-		unstructured.RemoveNestedField(object, field.parts...)
-		for i := 0; i <= len(field.parts); i++ {
-			val, _, _ := unstructured.NestedFieldNoCopy(object, field.parts[:len(field.parts)-i]...)
-			if mapping, ok := val.(map[string]any); ok && len(mapping) == 0 {
-				unstructured.RemoveNestedField(object, field.parts[:len(field.parts)-i]...)
+func findMatchingPaths(object any, parts []PathPart, currentPath []string) [][]string {
+	if len(parts) == 0 {
+		return [][]string{currentPath}
+	}
+
+	// skip over parts that aren't regex
+	nextPart := parts[0]
+	pathToAppend := make([]string, 0)
+	for _, p := range parts {
+		if p.regex == nil {
+			pathToAppend = append(pathToAppend, p.part)
+		} else {
+			nextPart = p
+		}
+	}
+	currentPath = append(currentPath, pathToAppend...)
+
+	// we've completed the list
+	if nextPart.regex == nil {
+		return [][]string{currentPath}
+	}
+
+	// Get to the correct point in the current structure
+	val, _, _ := NestedField(object, pathToAppend...)
+	if obj, ok := val.(map[string]any); ok {
+		object = obj
+	} else {
+		return [][]string{} // Path isn't valid
+	}
+
+	// Turn slices into maps where index
+	// is the key so that you can treat
+	// them the same later
+	matchable := make(map[string]any)
+	switch val := object.(type) {
+	case map[string]any:
+		matchable = val
+	case []any:
+		for i, v := range val {
+			matchable[fmt.Sprint(i)] = v
+		}
+	}
+
+	// find matched to regex
+	matching := make([]string, 0)
+	for key := range matchable {
+		if nextPart.regex.MatchString(key) {
+			matching = append(matching, key)
+		}
+	}
+
+	// find paths for matching keys
+	matchingPaths := make([][]string, 0)
+	for _, m := range matching {
+		newPath := make([]string, 0)
+		newPath = append(newPath, currentPath...)
+		newPath = append(newPath, m)
+		val, found, err := NestedField(object, m)
+		if !found || err != nil {
+			continue
+		}
+		switch val.(type) {
+		case map[string]any, []any:
+			foundPaths := findMatchingPaths(val, parts[1:], newPath)
+			matchingPaths = append(matchingPaths, foundPaths...)
+		default:
+			matchingPaths = append(matchingPaths, newPath)
+		}
+	}
+	return matchingPaths
+}
+
+func omitFields(object map[string]any, paths []Path) map[string]any {
+	for _, path := range paths {
+		foundPaths := findMatchingPaths(object, path.parts, []string{})
+		for _, p := range foundPaths {
+			val := RemoveNestedField(object, p...)
+			if obj, ok := val.(map[string]any); ok {
+				object = obj
 			}
 		}
 	}
+	return object
 }
 
 // mergeManifests will return an attempt to update the localRef with the clusterCR. In the case of an error it will return an unmodified localRef.

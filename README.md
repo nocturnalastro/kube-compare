@@ -112,8 +112,10 @@ fieldsToOmit:
          - spec.selector.matchLabels.k8s-app # remove spec.selector.matchLabels.k8s-app before diff
          - metadata.labels.k8s-app
          - spec.template.metadata.labels.k8s-app
+         - 'spec.template.metadata.labels.`olm.operatorgroup.uid/[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}`' # Backticks (`) denote that the segment should be regex pattern matched
       defualt:
          - a.custom.default."k8s.io" # Keys containing dots should be quoted
+
 ```
 
 `metadata.yaml` supports several other advanced behaviours:
