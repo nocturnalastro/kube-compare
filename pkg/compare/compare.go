@@ -67,13 +67,13 @@ var (
 		command. Users can use external commands with params too, example:
 		KUBECTL_EXTERNAL_DIFF="colordiff -N -u"
 		
-		 By default, the "diff" command available in your path will be run with the "-u"
+		By default, the "diff" command available in your path will be run with the "-u"
 		(unified diff) and "-N" (treat absent files as empty) options.
 		
-		 Exit status: 0 No differences were found. 1 Differences were found. >1 kubectl
+		Exit status: 0 No differences were found. 1 Differences were found. >1 kubectl
 		or diff failed with an error.
 		
-		 Note: KUBECTL_EXTERNAL_DIFF, if used, is expected to follow that convention.
+		Note: KUBECTL_EXTERNAL_DIFF, if used, is expected to follow that convention.
 
 		Experimental: This command is under active development and may change without notice.
 	`)
