@@ -531,10 +531,9 @@ func (o *Options) Run() error {
 			return err
 		}
 
-		userOverrides := make([]*UserOverride, 0)
-		userOverride, err := o.userOverridesCorrelator.Match(clusterCR)
-		if err == nil && userOverride != nil {
-			userOverrides = append(userOverrides, userOverride)
+		userOverrides, err := o.userOverridesCorrelator.Match(clusterCR)
+		if err != nil && !containOnly(err, []error{UnknownMatch{}}) {
+			return err //nolint: wrapcheck
 		}
 
 		obj := InfoObject{
