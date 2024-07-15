@@ -153,6 +153,9 @@ func NewGroupCorrelator(fieldGroups [][][]string, templates []*ReferenceTemplate
 
 		}
 	}
+	mappings, removedIndexes := groups.Prune(mappings)
+	core.GroupFunctions = groups.RemoveElementsFromSlice(core.GroupFunctions, removedIndexes)
+	core.templatesByGroups = mappings
 	return &core, nil
 }
 

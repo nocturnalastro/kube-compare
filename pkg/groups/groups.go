@@ -6,6 +6,8 @@ package groups
 import (
 	"errors"
 	"fmt"
+	"slices"
+	"sort"
 )
 
 // Divide divides elements into groups based on specified grouping functions.
@@ -59,4 +61,31 @@ func GetWithMoreThen[K comparable, V any](groups map[K][]V, threshold int) []V {
 		}
 	}
 	return nil
+}
+
+// Prune removes groups with no entries returns a list keys removed
+func Prune[K comparable, V any](groups []map[K][]V) ([]map[K][]V, []int) {
+	removed := make([]int, 0)
+	for i, elements := range groups {
+		if len(elements) == 0 {
+			removed = append(removed, i)
+		}
+	}
+	groups = RemoveElementsFromSlice(groups, removed)
+	return groups, removed
+}
+
+func RemoveElementsFromSlice[T any](s []T, indexs []int) []T {
+	sort.Sort(sort.Reverse(sort.IntSlice(indexs)))
+	for _, i := range indexs {
+		if i >= len(s) {
+			continue
+		}
+		if i+1 == len(s) {
+			s = s[:len(s)-1]
+		} else {
+			s = slices.Delete(s, i, i+1)
+		}
+	}
+	return s
 }
