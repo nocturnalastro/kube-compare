@@ -5,7 +5,6 @@ package compare
 import (
 	"bytes"
 	"encoding/csv"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -15,7 +14,6 @@ import (
 	"strings"
 	"text/template"
 
-	jsonpatch "github.com/evanphx/json-patch"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
@@ -134,13 +132,17 @@ func (rf ReferenceTemplate) Exec(params map[string]any) (*unstructured.Unstructu
 	content := buf.Bytes()
 	err = yaml.Unmarshal(bytes.ReplaceAll(content, []byte(noValue), []byte("")), &data)
 	if err != nil {
-		return nil, fmt.Errorf("template: %s isn't a yaml file after injection. yaml unmarshal error: %w. The Template After Execution: %s", rf.Name(), err, string(content))
+		return nil, fmt.Errorf("template: %s isn't a yaml file after injection. yaml unmarshal error: %w. The Template After Execution: %s", rf.GetName(), err, string(content))
 	}
 	return &unstructured.Unstructured{Object: data}, nil
 }
 
-func (rf ReferenceTemplate) Name() string {
+func (rf ReferenceTemplate) GetName() string {
 	return rf.Path
+}
+
+func (rf ReferenceTemplate) GetMetadata() (*unstructured.Unstructured, error) {
+	return rf.metadata, nil
 }
 
 func (r *Reference) getTemplates() []*ReferenceTemplate {
@@ -304,58 +306,4 @@ func parseDiffConfig(filePath string) (UserConfig, error) {
 	}
 	err = parseYaml(os.DirFS("/"), confPath[1:], &result, userConfNotExistsError, userConfigNotInFormat)
 	return result, err
-}
-
-type patchType string
-
-const (
-	mergePatch = "mergepatch"
-	rfc6902    = "rfc6902"
-)
-
-type UserOverride struct {
-	Name  string    `json:"name"`
-	Type  patchType `json:"type"`
-	Patch []byte    `json:"patch"`
-}
-
-func applyPatch(data, patch []byte, patchType patchType) ([]byte, error) {
-	switch patchType {
-	case mergePatch:
-		modified, err := jsonpatch.MergePatch(data, patch)
-		if err != nil {
-			return data, fmt.Errorf("failed to apply user patch: %w", err)
-		}
-		return modified, nil
-	case rfc6902:
-		decodedPatch, err := jsonpatch.DecodePatch(patch)
-		if err != nil {
-			return data, fmt.Errorf("failed to decode user patch: %w", err)
-		}
-		modified, err := decodedPatch.Apply(data)
-		if err != nil {
-			return data, fmt.Errorf("failed to apply user patch: %w", err)
-		}
-		return modified, nil
-	}
-	return data, fmt.Errorf("unknown patch type: %s", patchType)
-}
-
-func (o UserOverride) Apply(resource *unstructured.Unstructured) (*unstructured.Unstructured, error) {
-	data, err := json.Marshal(resource)
-	if err != nil {
-		return resource, fmt.Errorf("failed to marshal reference CR: %w", err)
-	}
-
-	modified, err := applyPatch(data, o.Patch, o.Type)
-	if err != nil {
-		return resource, err
-	}
-
-	updatedObj := make(map[string]any)
-	err = json.Unmarshal(modified, &updatedObj)
-	if err != nil {
-		return resource, fmt.Errorf("failed to unmarshal updated manifest: %w", err)
-	}
-	return &unstructured.Unstructured{Object: updatedObj}, nil
 }
