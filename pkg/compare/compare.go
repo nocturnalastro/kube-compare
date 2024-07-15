@@ -556,7 +556,11 @@ func (o *Options) Run() error {
 			}
 		}
 
-		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.GetName(), CRName: apiKindNamespaceName(clusterCR)})
+		patched := ""
+		if len(userOverrides) > 0 {
+			patched = o.userOverridesPath
+		}
+		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.GetName(), CRName: apiKindNamespaceName(clusterCR), Patched: patched})
 		return err
 	})
 	if err != nil {
@@ -709,6 +713,7 @@ type DiffSum struct {
 	DiffOutput         string `json:"DiffOutput"`
 	CorrelatedTemplate string `json:"CorrelatedTemplate"`
 	CRName             string `json:"CRName"`
+	Patched            string `json:"Patched,omitempty"`
 }
 
 func (s DiffSum) String() string {
@@ -719,7 +724,10 @@ Reference File: {{ .CorrelatedTemplate }}
 Diff Output: {{ .DiffOutput }}
 {{- else }}
 Diff Output: None
-{{ end }}
+{{- end }}
+{{- if ne (len  .Patched) 0 }}
+Patched with {{ .Patched }}
+{{- end }}
 `
 	var buf bytes.Buffer
 	tmpl, _ := template.New("DiffSummary").Parse(t)
@@ -729,6 +737,10 @@ Diff Output: None
 
 func (s DiffSum) HasDiff() bool {
 	return s.DiffOutput != ""
+}
+
+func (s DiffSum) WasPatched() bool {
+	return s.Patched != ""
 }
 
 // Summary Contains all info included in the Summary output of the compare command
@@ -787,7 +799,7 @@ func (o Output) String(showEmptyDiffs bool) string {
 	diffParts := []string{}
 
 	for _, diffSum := range *o.Diffs {
-		if showEmptyDiffs || diffSum.HasDiff() {
+		if showEmptyDiffs || diffSum.HasDiff() || diffSum.WasPatched() {
 			diffParts = append(diffParts, fmt.Sprintln(diffSum.String()))
 		}
 	}
