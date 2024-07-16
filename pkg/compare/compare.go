@@ -306,7 +306,7 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 //
 // For instance, consider a template resource with fixed apiVersion, name, and kind, but a templated namespace. The
 // correlator will potentially match this template based on its fixed fields: apiVersion_name_kind.
-var defaultFeildGroups = [][][]string{
+var defaultFieldGroups = [][][]string{
 	{{"apiVersion"}, {"metadata", "name"}, {"metadata", "namespace"}, {"kind"}},
 	{{"apiVersion"}, {"metadata", "namespace"}, {"kind"}},
 	{{"metadata", "name"}, {"metadata", "namespace"}, {"kind"}},
@@ -337,7 +337,7 @@ func (o *Options) setupCorrelators() error {
 		correlators = append(correlators, manualCorrelator)
 	}
 
-	groupCorrelator, err := NewGroupCorrelator(defaultFeildGroups, o.templates)
+	groupCorrelator, err := NewGroupCorrelator(defaultFieldGroups, o.templates)
 	if err != nil {
 		return err
 	}
@@ -361,21 +361,21 @@ func (o *Options) setupOverrideCorrelators() error {
 		}
 	}
 
-	corillators := make([]Correlator[*UserOverride], 0)
+	correlators := make([]Correlator[*UserOverride], 0)
 	if len(extactOverrideMatches) > 0 {
 		manualOverrideCorrelator, err := NewExactMatchCorrelator(extactOverrideMatches, o.userOverrides)
 		if err != nil {
 			return err
 		}
-		corillators = append(corillators, manualOverrideCorrelator)
+		correlators = append(correlators, manualOverrideCorrelator)
 	}
 
-	groupCorrelator, err := NewGroupCorrelator(defaultFeildGroups, o.userOverrides)
+	groupCorrelator, err := NewGroupCorrelator(defaultFieldGroups, o.userOverrides)
 	if err != nil {
 		return err
 	}
-	corillators = append(corillators, groupCorrelator)
-	o.userOverridesCorrelator = NewMultiCorrelator(corillators)
+	correlators = append(correlators, groupCorrelator)
+	o.userOverridesCorrelator = NewMultiCorrelator(correlators)
 
 	return nil
 }
