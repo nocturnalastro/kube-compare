@@ -270,7 +270,7 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 	}
 
 	if o.userOverridesPath != "" {
-		o.userOverrides, err = loadUserOverrides(o.userOverridesPath)
+		o.userOverrides, err = LoadUserOverrides(o.userOverridesPath)
 		if err != nil {
 			return err
 		}
@@ -579,7 +579,7 @@ func (o *Options) Run() error {
 		if err != nil {
 			return fmt.Errorf("failed to write new overrides file: %w", err)
 		}
-		_, err = dumpOverrides(newUserOverrides, fw)
+		_, err = DumpOverrides(newUserOverrides, fw)
 		if err != nil {
 			return err
 		}

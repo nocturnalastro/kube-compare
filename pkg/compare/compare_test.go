@@ -384,6 +384,10 @@ func TestCompareRun(t *testing.T) {
 		defaultTest("User Override").
 			withSubTestSuffix("Input").
 			withUserOverridePath("localnewOverridesuserOverrides.golden"),
+		defaultTest("User Override").
+			withSubTestSuffix("Input rfc6902").
+			withChecks(defaultChecks.withPrefixedSuffix("rfc6902")).
+			withUserOverridePath("rfc6902.patch"),
 	}
 
 	tf := cmdtesting.NewTestFactory()

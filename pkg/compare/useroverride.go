@@ -123,7 +123,7 @@ func CreateMergePatch(obj InfoObject) (*UserOverride, error) {
 	return &override, nil
 }
 
-func loadUserOverrides(path string) ([]*UserOverride, error) {
+func LoadUserOverrides(path string) ([]*UserOverride, error) {
 	result := make([]*UserOverride, 0)
 
 	contents, err := os.ReadFile(path)
@@ -139,7 +139,7 @@ func loadUserOverrides(path string) ([]*UserOverride, error) {
 	return result, nil
 }
 
-func dumpOverrides(overrides []*UserOverride, fw io.Writer) (int, error) {
+func DumpOverrides(overrides []*UserOverride, fw io.Writer) (int, error) {
 	contents, err := json.Marshal(overrides)
 	if err != nil {
 		return 0, fmt.Errorf("failed to dump overrides: %w", err)

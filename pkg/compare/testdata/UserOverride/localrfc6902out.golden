@@ -1,0 +1,13 @@
+**********************************
+
+Cluster CR: v1_Namespace_openshift-storage
+Reference File: namespace.yaml
+Diff Output: None
+Patched with testdata/UserOverride/rfc6902.patch
+
+**********************************
+
+Summary
+CRs with diffs: 0/1
+No CRs are missing from the cluster
+No CRs are unmatched to reference CRs
