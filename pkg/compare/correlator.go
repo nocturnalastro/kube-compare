@@ -19,7 +19,7 @@ var fieldSeparator = "_"
 
 // Correlator provides an abstraction that allow the usage of different Resource correlation logics
 // in the kubectl cluster-compare. The correlation process Matches for each Resource a template.
-type Correlator[T ColliationEntry] interface {
+type Correlator[T CorrelationEntry] interface {
 	Match(*unstructured.Unstructured) ([]T, error)
 }
 
@@ -40,7 +40,7 @@ func apiKindNamespaceName(r *unstructured.Unstructured) string {
 }
 
 // MultipleMatches an error that can be returned by a Correlator in a case multiple template Matches were found for a Resource.
-type MultipleMatches[T ColliationEntry] struct {
+type MultipleMatches[T CorrelationEntry] struct {
 	Resource *unstructured.Unstructured
 	Matches  []T
 }
@@ -50,11 +50,11 @@ func (e MultipleMatches[T]) Error() string {
 }
 
 // MultiCorrelator Matches templates by attempting to find a match with one of its predefined Correlators.
-type MultiCorrelator[T ColliationEntry] struct {
+type MultiCorrelator[T CorrelationEntry] struct {
 	correlators []Correlator[T]
 }
 
-func NewMultiCorrelator[T ColliationEntry](correlators []Correlator[T]) Correlator[T] {
+func NewMultiCorrelator[T CorrelationEntry](correlators []Correlator[T]) Correlator[T] {
 	return &MultiCorrelator[T]{correlators: correlators}
 }
 
@@ -71,7 +71,7 @@ func (c MultiCorrelator[T]) Match(object *unstructured.Unstructured) ([]T, error
 	return res, errors.Join(errs...) // nolint:wrapcheck
 }
 
-type ColliationEntry interface {
+type CorrelationEntry interface {
 	GetName() string
 	GetMetadata() (*unstructured.Unstructured, error)
 }
@@ -83,7 +83,7 @@ type ExactMatchCorrelator[T any] struct {
 	apiKindNamespaceName map[string]T
 }
 
-func NewExactMatchCorrelator[T ColliationEntry](matchPairs map[string]string, templates []T) (*ExactMatchCorrelator[T], error) {
+func NewExactMatchCorrelator[T CorrelationEntry](matchPairs map[string]string, templates []T) (*ExactMatchCorrelator[T], error) {
 	core := ExactMatchCorrelator[T]{}
 	core.apiKindNamespaceName = make(map[string]T)
 	nameToObject := make(map[string]T)
@@ -109,7 +109,7 @@ func (c ExactMatchCorrelator[T]) Match(object *unstructured.Unstructured) ([]T, 
 	return []T{temp}, nil
 }
 
-func fetchMetadata[T ColliationEntry](t T) (*unstructured.Unstructured, error) {
+func fetchMetadata[T CorrelationEntry](t T) (*unstructured.Unstructured, error) {
 	return t.GetMetadata() //nolint: wrapcheck
 }
 
@@ -120,7 +120,7 @@ func fetchMetadata[T ColliationEntry](t T) (*unstructured.Unstructured, error) {
 // (with groups with less `indexed fields`) until it finds a distinct match, in case it doesn't, MultipleMatches error
 // will be returned.
 // Templates will be only indexed by a group of fields only if all fields in group are not templated.
-type GroupCorrelator[T ColliationEntry] struct {
+type GroupCorrelator[T CorrelationEntry] struct {
 	// List of groups of nested fields (each field is represented by []string)
 	fieldGroups [][][]string
 	// List of Hash functions for groups of fields organized in same order of fieldGroups
@@ -135,7 +135,7 @@ type GroupCorrelator[T ColliationEntry] struct {
 // For fieldsGroups =  {{{"metadata", "namespace"}, {"kind"}}, {{"kind"}}} and the following templates: [fixedKindTemplate, fixedNamespaceKindTemplate]
 // the fixedNamespaceKindTemplate will be added to a mapping where the keys are  in the format of `namespace_kind`. The fixedKindTemplate
 // will be added to a mapping where the keys are  in the format of `kind`.
-func NewGroupCorrelator[T ColliationEntry](fieldGroups [][][]string, templates []T) (*GroupCorrelator[T], error) {
+func NewGroupCorrelator[T CorrelationEntry](fieldGroups [][][]string, templates []T) (*GroupCorrelator[T], error) {
 	var functionGroups []func(*unstructured.Unstructured) (group string, err error)
 	sort.Slice(fieldGroups, func(i, j int) bool {
 		return len(fieldGroups[i]) >= len(fieldGroups[j])
@@ -190,7 +190,7 @@ func createGroupHashFunc(fieldGroup [][]string) func(*unstructured.Unstructured)
 	return groupHashFunc
 }
 
-func (c *GroupCorrelator[ColliationEntry]) getGroupsFunction() func(cr *unstructured.Unstructured) ([]int, error) {
+func (c *GroupCorrelator[CorrelationEntry]) getGroupsFunction() func(cr *unstructured.Unstructured) ([]int, error) {
 	return func(cr *unstructured.Unstructured) ([]int, error) {
 		lenGroupMatch := 0
 		var groupIndexes []int
@@ -217,7 +217,7 @@ func areFieldsNotTemplated(cr *unstructured.Unstructured, group [][]string) bool
 	return true
 }
 
-func getTemplatesName[T ColliationEntry](templates []T) string {
+func getTemplatesName[T CorrelationEntry](templates []T) string {
 	var names []string
 	for _, temp := range templates {
 		names = append(names, temp.GetName())
