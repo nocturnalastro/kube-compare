@@ -535,6 +535,7 @@ func (o *Options) Run() error {
 		if err != nil && !containOnly(err, []error{UnknownMatch{}}) {
 			return err //nolint: wrapcheck
 		}
+		newUserOverrides = append(newUserOverrides, userOverrides...)
 
 		obj := InfoObject{
 			injectedObjFromTemplate: localRef,
