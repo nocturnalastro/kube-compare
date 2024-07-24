@@ -1,0 +1,11 @@
+Parts:
+  - name: ExamplePart
+    Components:
+      - name: Namespace
+        type: Required
+        templateConfig:
+          ignore-unspecified-fields: false
+        requiredTemplates:
+          - path: namespace.yaml
+            config:
+              ignore-unspecified-fields: true

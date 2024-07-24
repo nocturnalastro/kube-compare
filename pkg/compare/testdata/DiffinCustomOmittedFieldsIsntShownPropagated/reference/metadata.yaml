@@ -1,0 +1,17 @@
+Parts:
+  - name: ExamplePart
+    Components:
+      - name: Dashboard
+        type: Required
+        templateConfig:
+          fieldsToOmitRefs:
+              - deployment
+        requiredTemplates:
+          - path: deploymentMetrics.yaml
+
+fieldsToOmit:
+  items:
+    deployment:
+      - pathToKey: spec.selector.matchLabels.k8s-app
+      - pathToKey: metadata.labels.k8s-app
+      - pathToKey: spec.template.metadata.labels.k8s-app

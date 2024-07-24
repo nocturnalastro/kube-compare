@@ -81,14 +81,42 @@ func (toOmit *FieldsToOmit) process() error {
 }
 
 type Component struct {
-	Name              string               `json:"name"`
-	Type              ComponentType        `json:"type,omitempty"`
-	RequiredTemplates []*ReferenceTemplate `json:"requiredTemplates,omitempty"`
-	OptionalTemplates []*ReferenceTemplate `json:"optionalTemplates,omitempty"`
+	Name              string                  `json:"name"`
+	Type              ComponentType           `json:"type,omitempty"`
+	TemplateConfig    ReferenceTemplateConfig `json:"templateConfig,omitempty"`
+	RequiredTemplates []*ReferenceTemplate    `json:"requiredTemplates,omitempty"`
+	OptionalTemplates []*ReferenceTemplate    `json:"optionalTemplates,omitempty"`
 }
+
+func (c *Component) PropogateTemplateConfig() {
+	for _, t := range c.RequiredTemplates {
+		t.Config.DefaultValues(c.TemplateConfig)
+	}
+	for _, t := range c.OptionalTemplates {
+		t.Config.DefaultValues(c.TemplateConfig)
+	}
+}
+
 type ReferenceTemplateConfig struct {
-	AllowMerge       bool     `json:"ignore-unspecified-fields,omitempty"`
+	// Using a point so that we can tell if has been set or not
+	AllowMerge       *bool    `json:"ignore-unspecified-fields,omitempty"`
 	FieldsToOmitRefs []string `json:"fieldsToOmitRefs,omitempty"`
+}
+
+func (c *ReferenceTemplateConfig) DefaultValues(config ReferenceTemplateConfig) {
+	if len(c.FieldsToOmitRefs) == 0 {
+		c.FieldsToOmitRefs = append(c.FieldsToOmitRefs, config.FieldsToOmitRefs...)
+	}
+	if c.AllowMerge == nil {
+		c.AllowMerge = config.AllowMerge
+	}
+}
+
+func (c *ReferenceTemplateConfig) GetAllowMerge() bool {
+	if c.AllowMerge == nil {
+		return false
+	}
+	return *c.AllowMerge
 }
 
 type ReferenceTemplate struct {
@@ -238,6 +266,11 @@ func getReference(fsys fs.FS) (Reference, error) {
 	err = result.FieldsToOmit.process()
 	if err != nil {
 		return result, err
+	}
+	for _, part := range result.Parts {
+		for _, comp := range part.Components {
+			comp.PropogateTemplateConfig()
+		}
 	}
 	return result, nil
 }

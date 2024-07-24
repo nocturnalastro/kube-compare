@@ -308,6 +308,8 @@ func TestCompareRun(t *testing.T) {
 		defaultTest("Diff in Custom Omitted Fields Isnt Shown Leading Dot"),
 		defaultTest("Diff in Custom Omitted Fields Isnt Shown Non Default"),
 		defaultTest("Diff in Custom Omitted Fields Isnt Shown Prefix"),
+		defaultTest("Diff in Custom Omitted Fields Isnt Shown Propagated"),
+		defaultTest("Diff in Custom Omitted Fields Isnt Shown Propagated No Override"),
 		defaultTest("Custom Fields To Omit Default Key Not Found"),
 		defaultTest("Custom Fields To Omit Ref Entry Not Found"),
 		defaultTest("When Using Diff All Flag - All Unmatched Resources Appear In Summary").
@@ -337,6 +339,8 @@ func TestCompareRun(t *testing.T) {
 		defaultTest("JSON Output").
 			withOutputFormat(Json),
 		defaultTest("Check Ignore Unspecified Fields Config"),
+		defaultTest("Check Ignore Unspecified Fields Config Propagated"),
+		defaultTest("Check Ignore Unspecified Fields Config Propagated No Override"),
 		defaultTest("Check Merging Does Not Overwrite Template Config"),
 		defaultTest("NoDiffs"),
 		defaultTest("SomeDiffs"),
