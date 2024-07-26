@@ -4,6 +4,7 @@ package compare
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -437,6 +439,16 @@ func extractPath(str string, pathIndex int) string {
 	return "Unknown Path"
 }
 
+type Match struct {
+	name       string
+	kind       string
+	apiVersion string
+	namespace  string
+	path       string
+	clusterCR  *unstructured.Unstructured
+	template   *ReferenceTemplate
+}
+
 // Run uses the factory to parse file arguments (in case of local mode) or gather all cluster resources matching
 // templates types. For each Resource it finds the matching Resource template and
 // injects, compares, and runs against differ.
@@ -470,6 +482,8 @@ func (o *Options) Run() error {
 		return containOnly(err, []error{MultipleMatches{}, UnknownMatch{}, MergeError{}})
 	})
 
+	matches := make([]Match, 0)
+
 	err := r.Visit(func(info *resource.Info, _ error) error { // ignoring previous errors
 		clusterCRMapping, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(info.Object)
 		clusterCR := &unstructured.Unstructured{Object: clusterCRMapping}
@@ -478,31 +492,50 @@ func (o *Options) Run() error {
 		if err != nil {
 			return err
 		}
+		matches = append(matches,
+			Match{
+				path:       temp.Name(),
+				name:       temp.metadata.GetName(),
+				kind:       temp.metadata.GetKind(),
+				apiVersion: temp.metadata.GetAPIVersion(),
+				namespace:  temp.metadata.GetNamespace(),
+				clusterCR:  clusterCR,
+				template:   temp,
+			},
+		)
+		return nil
+	})
 
-		localRef, err := temp.Exec(clusterCR.Object)
+	if err != nil {
+		return fmt.Errorf("error occurred while trying to process resources: %w", err)
+	}
+
+	slices.SortStableFunc(matches, func(a, b Match) int {
+		return cmp.Compare(filepath.Base(a.path), filepath.Base(b.path))
+	})
+
+	for _, match := range matches {
+		localRef, err := match.template.Exec(match.clusterCR.Object)
 		if err != nil {
-			return err
+			return fmt.Errorf("error occurred while trying to process resources: %w", err)
 		}
 
 		obj := InfoObject{
 			injectedObjFromTemplate: localRef,
-			clusterObj:              clusterCR,
-			FieldsToOmit:            temp.FieldsToOmit(o.ref.FieldsToOmit),
-			allowMerge:              temp.Config.AllowMerge,
+			clusterObj:              match.clusterCR,
+			FieldsToOmit:            match.template.FieldsToOmit(o.ref.FieldsToOmit),
+			allowMerge:              match.template.Config.AllowMerge,
 		}
 		diffOutput, err := runDiff(obj, o.IOStreams, o.ShowManagedFields)
 		if err != nil {
-			return err
+			return fmt.Errorf("error occurred while trying to process resources: %w", err)
 		}
 		if diffOutput.Len() > 0 {
 			numDiffCRs += 1
 		}
 
-		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.Name(), CRName: apiKindNamespaceName(clusterCR)})
-		return err
-	})
-	if err != nil {
-		return fmt.Errorf("error occurred while trying to process resources: %w", err)
+		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: match.template.Name(), CRName: apiKindNamespaceName(match.clusterCR)})
+
 	}
 
 	sum := newSummary(&o.ref, o.correlator, numDiffCRs)

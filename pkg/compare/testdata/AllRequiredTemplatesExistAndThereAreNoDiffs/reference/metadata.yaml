@@ -4,7 +4,7 @@ Parts:
       - name: DemonSets
         type: Required
         requiredTemplates:
-          - path: cm.yaml
+          - path: 00_cm.yaml
           - path: cr.yaml
           - path: crb.yaml
           - path: deploymentDashboard.yaml
@@ -14,4 +14,4 @@ Parts:
           - path: role.yaml
           - path: sa.yaml
           - path: secret.yaml
-          - path: service.yaml
+          - path: 01_service.yaml
