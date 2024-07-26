@@ -549,7 +549,7 @@ func (o *Options) Run() error {
 		if diffOutput.Len() > 0 {
 			numDiffCRs += 1
 
-			uo, err := CreateMergePatch(obj)
+			uo, err := CreateMergePatch(obj, diffOutput.String())
 			if err == nil {
 				newUserOverrides = append(newUserOverrides, uo)
 			}
