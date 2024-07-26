@@ -3,4 +3,5 @@ go 1.22.0
 use (
 	.
 	addon-tools/report-creator
+	addon-tools/patch-tool
 )
