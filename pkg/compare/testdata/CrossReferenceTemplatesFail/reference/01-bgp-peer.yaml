@@ -1,0 +1,21 @@
+# required
+# count: 1-N
+apiVersion: metallb.io/v1beta2
+kind: BGPPeer
+metadata:
+  name: {{ .metadata.name }}
+  namespace: metallb-system
+spec:
+  peerAddress: {{ .spec.peerAddress }}
+  peerASN: {{ .spec.peerASN }}
+  myASN: {{ .spec.myASN }}
+  routerID: {{ .spec.routerID }}
+  {{ if .spec }}
+  {{ $profile := GetTemplated "metallb.io/v1beta1" "BFDProfile" .spec.bfdProfile "metallb-system" }}
+  {{- if $profile.metadata.name}}
+  bfdProfile: {{ $profile.metadata.name }}
+  {{- else }}
+  bfdProfile: "Profile not found: {{.spec.bfdProfile }}"
+  {{- end }}
+  {{- end }}
+  passwordSecret: {{ .spec.passwordSecret | toJson }}

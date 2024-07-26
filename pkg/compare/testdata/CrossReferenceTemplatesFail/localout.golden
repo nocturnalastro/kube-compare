@@ -1,0 +1,23 @@
+**********************************
+
+Cluster CR: metallb.io/v1beta2_BGPPeer_metallb-system_bfdpeer
+Reference File: 01-bgp-peer.yaml
+Diff Output: diff -u -N TEMP/metallb-io-v1beta2_bgppeer_metallb-system_bfdpeer TEMP/metallb-io-v1beta2_bgppeer_metallb-system_bfdpeer
+--- TEMP/metallb-io-v1beta2_bgppeer_metallb-system_bfdpeer	DATE
++++ TEMP/metallb-io-v1beta2_bgppeer_metallb-system_bfdpeer	DATE
+@@ -4,7 +4,7 @@
+   name: bfdpeer
+   namespace: metallb-system
+ spec:
+-  bfdProfile: 'Profile not found: bfdprofile'
++  bfdProfile: bfdprofile
+   myASN: 64500
+   passwordSecret: {}
+   peerASN: 64501
+
+**********************************
+
+Summary
+CRs with diffs: 1/2
+No CRs are missing from the cluster
+No CRs are unmatched to reference CRs

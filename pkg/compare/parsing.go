@@ -136,6 +136,10 @@ func (rf ReferenceTemplate) Exec(params map[string]any) (*unstructured.Unstructu
 	}
 	return &unstructured.Unstructured{Object: data}, nil
 }
+func (rf ReferenceTemplate) Funcs(funcMap template.FuncMap) ReferenceTemplate {
+	rf.Template = rf.Template.Funcs(funcMap)
+	return rf
+}
 
 func (rf ReferenceTemplate) Name() string {
 	return rf.Path

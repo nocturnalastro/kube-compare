@@ -1,0 +1,19 @@
+# required
+# count: 1-N
+apiVersion: metallb.io/v1beta1
+kind: BFDProfile
+metadata:
+  name: bfdprofile
+  namespace: metallb-system
+spec:
+  ################
+  # These values may vary. Recommended values are included as default
+  receiveInterval:  {{ or .spec.receiveInterval "300ms"}}
+  transmitInterval: {{ or .spec.transmitInterval "300ms"}}
+  echoInterval: {{ or .spec.echoInterval "50ms"}}
+  detectMultiplier: {{ or .spec.detectMultiplier "3" }}
+  echoMode: {{ or .spec.echoMode "true"}}
+  passiveMode: {{ or .spec.passiveMode "true"}}
+  minimumTtl: {{ or .spec.minimumTtl "254" }} # default 254
+  #
+  ################

@@ -1,0 +1,8 @@
+Parts:
+  - name: CrossRef
+    Components:
+      - name: CrossRef
+        type: Required
+        requiredTemplates:
+          - path: 00-bfd-profile.yaml
+          - path: 01-bgp-peer.yaml

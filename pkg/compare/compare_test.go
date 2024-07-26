@@ -330,6 +330,8 @@ func TestCompareRun(t *testing.T) {
 			withChecks(defaultChecks.withPrefixedSuffix("withVebosityFlag")),
 		defaultTest("Invalid Resources Are Skipped"),
 		defaultTest("Ref Contains Templates With Function Templates In Same File"),
+		defaultTest("Cross Reference Templates"),
+		defaultTest("Cross Reference Templates Fail"),
 	}
 
 	tf := cmdtesting.NewTestFactory()

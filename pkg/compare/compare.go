@@ -514,11 +514,22 @@ func (o *Options) Run() error {
 		return cmp.Compare(filepath.Base(a.path), filepath.Base(b.path))
 	})
 
+	templated := make(map[string]*unstructured.Unstructured)
+	newMap := FuncMap()
+	newMap["GetTemplated"] = func(apiVersion, kind, name, namespace string) map[string]any {
+		data, ok := templated[getApiKindNamespaceName(apiVersion, kind, name, namespace)]
+		if !ok {
+			return map[string]any{}
+		}
+		return data.Object
+	}
+
 	for _, match := range matches {
-		localRef, err := match.template.Exec(match.clusterCR.Object)
+		localRef, err := match.template.Funcs(newMap).Exec(match.clusterCR.Object)
 		if err != nil {
 			return fmt.Errorf("error occurred while trying to process resources: %w", err)
 		}
+		templated[apiKindNamespaceName(localRef)] = localRef
 
 		obj := InfoObject{
 			injectedObjFromTemplate: localRef,
@@ -534,8 +545,12 @@ func (o *Options) Run() error {
 			numDiffCRs += 1
 		}
 
-		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: match.template.Name(), CRName: apiKindNamespaceName(match.clusterCR)})
-
+		diffs = append(diffs,
+			DiffSum{
+				DiffOutput:         diffOutput.String(),
+				CorrelatedTemplate: match.template.Name(),
+				CRName:             apiKindNamespaceName(match.clusterCR),
+			})
 	}
 
 	sum := newSummary(&o.ref, o.correlator, numDiffCRs)

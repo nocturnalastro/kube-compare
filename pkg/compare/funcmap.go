@@ -42,6 +42,7 @@ func FuncMap() template.FuncMap {
 		"toJson":        toJSON,
 		"fromJson":      fromJSON,
 		"fromJsonArray": fromJSONArray,
+		"GetTemplated":  func(apiVersion, kind, name, namespace string) map[string]any { return map[string]any{} },
 	}
 
 	for k, v := range extra {

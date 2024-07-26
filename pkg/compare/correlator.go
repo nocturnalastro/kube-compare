@@ -32,11 +32,15 @@ func (e UnknownMatch) Error() string {
 	return fmt.Sprintf("Template couldn't be matched for: %s", apiKindNamespaceName(e.Resource))
 }
 
-func apiKindNamespaceName(r *unstructured.Unstructured) string {
-	if r.GetNamespace() == "" {
-		return strings.Join([]string{r.GetAPIVersion(), r.GetKind(), r.GetName()}, fieldSeparator)
+func getApiKindNamespaceName(apiVersion, kind, name, namespace string) string {
+	if namespace == "" {
+		return strings.Join([]string{apiVersion, kind, name}, fieldSeparator)
 	}
-	return strings.Join([]string{r.GetAPIVersion(), r.GetKind(), r.GetNamespace(), r.GetName()}, fieldSeparator)
+	return strings.Join([]string{apiVersion, kind, namespace, name}, fieldSeparator)
+}
+
+func apiKindNamespaceName(r *unstructured.Unstructured) string {
+	return getApiKindNamespaceName(r.GetAPIVersion(), r.GetKind(), r.GetName(), r.GetNamespace())
 }
 
 // MultipleMatches an error that can be returned by a Correlator in a case multiple template Matches were found for a Resource.
