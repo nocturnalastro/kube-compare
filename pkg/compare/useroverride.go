@@ -25,6 +25,7 @@ type UserOverride struct {
 	ExactMatch string    `json:"exactMatch"`
 	Type       patchType `json:"type"`
 	Patch      string    `json:"patch"`
+	DiffOuput  string    `json:"diffOutput"`
 }
 
 func (o UserOverride) GetName() string {
@@ -84,7 +85,7 @@ func (o UserOverride) Apply(resource *unstructured.Unstructured) (*unstructured.
 	return &unstructured.Unstructured{Object: updatedObj}, nil
 }
 
-func CreateMergePatch(obj InfoObject) (*UserOverride, error) {
+func CreateMergePatch(obj InfoObject, diffOutput string) (*UserOverride, error) {
 	localRefRuntime, err := obj.Merged()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create patch: %w", err)
@@ -118,6 +119,7 @@ func CreateMergePatch(obj InfoObject) (*UserOverride, error) {
 		Namespace:  clusterCR.GetNamespace(),
 		Type:       mergePatch,
 		Patch:      string(patch),
+		DiffOuput:  diffOutput,
 	}
 
 	return &override, nil
