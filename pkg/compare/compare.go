@@ -113,6 +113,7 @@ var OutputFormats = []string{Json, Yaml}
 type Options struct {
 	CRs                resource.FilenameOptions
 	referenceConfig    string
+	template           string
 	diffConfigFileName string
 	diffAll            bool
 	verboseOutput      bool
@@ -178,6 +179,7 @@ func NewCmd(f kcmdutil.Factory, streams genericiooptions.IOStreams) *cobra.Comma
 	kcmdutil.AddFilenameOptionFlags(cmd, &options.CRs, "contains the configuration to diff")
 	cmd.Flags().StringVarP(&options.diffConfigFileName, "diff-config", "c", "", "Path to the user config file")
 	cmd.Flags().StringVarP(&options.referenceConfig, "reference", "r", "", "Path to reference config file.")
+	cmd.Flags().StringVarP(&options.template, "template", "t", "", "Path to singular template to compare.")
 	cmd.Flags().BoolVar(&options.ShowManagedFields, "show-managed-fields", options.ShowManagedFields, "If true, include managed fields in the diff.")
 	cmd.Flags().BoolVarP(&options.diffAll, "all-resources", "A", options.diffAll,
 		"If present, In live mode will try to match all resources that are from the types mentioned in the reference. "+
@@ -226,30 +228,59 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 	var fs fs.FS
 	o.builder = f.NewBuilder()
 
-	if o.referenceConfig == "" {
+	if o.referenceConfig == "" && o.template == "" {
 		return kcmdutil.UsageErrorf(cmd, noRefFileWasPassed)
 	}
-	if _, err := os.Stat(o.referenceConfig); os.IsNotExist(err) && !isURL(o.referenceConfig) {
-		return fmt.Errorf(refFileNotExistsError)
+
+	if o.referenceConfig != "" && o.template != "" {
+		return kcmdutil.UsageErrorf(cmd, "Can't use -r and -t together")
 	}
 
-	referenceDir := filepath.Dir(o.referenceConfig)
-	referenceFileName := filepath.Base(o.referenceConfig)
-	if isURL(o.referenceConfig) {
-		// filepath.Dir removes one / from http://
-		referenceDir = strings.Replace(referenceDir, "/", "//", 1)
-		fs = HTTPFS{baseURL: referenceDir, httpGet: httpgetImpl}
-	} else {
-		rootPath, err := filepath.Abs(referenceDir)
+	if o.referenceConfig != "" {
+		if _, err := os.Stat(o.referenceConfig); os.IsNotExist(err) && !isURL(o.referenceConfig) {
+			return fmt.Errorf(refFileNotExistsError)
+		}
+		referenceDir := filepath.Dir(o.referenceConfig)
+		referenceFileName := filepath.Base(o.referenceConfig)
+		if isURL(o.referenceConfig) {
+			// filepath.Dir removes one / from http://
+			referenceDir = strings.Replace(referenceDir, "/", "//", 1)
+			fs = HTTPFS{baseURL: referenceDir, httpGet: httpgetImpl}
+		} else {
+			rootPath, err := filepath.Abs(referenceDir)
+			if err != nil {
+				return fmt.Errorf("failed to get absolute path: %w", err)
+			}
+			fs = os.DirFS(rootPath)
+		}
+
+		o.ref, err = getReference(fs, referenceFileName)
+		if err != nil {
+			return err
+		}
+	}
+
+	if o.template != "" {
+		basePath := filepath.Base(o.template)
+		o.ref = Reference{
+			Parts: []Part{
+				{
+					Name: basePath,
+					Components: []Component{
+						{
+							Name:              basePath,
+							Type:              Required,
+							RequiredTemplates: []*ReferenceTemplate{{Path: basePath}},
+						},
+					},
+				},
+			},
+		}
+		rootPath, err := filepath.Abs(filepath.Dir(o.template))
 		if err != nil {
 			return fmt.Errorf("failed to get absolute path: %w", err)
 		}
 		fs = os.DirFS(rootPath)
-	}
-
-	o.ref, err = getReference(fs, referenceFileName)
-	if err != nil {
-		return err
 	}
 
 	if o.diffConfigFileName != "" {

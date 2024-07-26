@@ -172,6 +172,7 @@ type Test struct {
 	outputFormat          string
 	checks                Checks
 	verboseOutput         bool
+	singleTemplate        string
 }
 
 func (test *Test) getTestDir() string {
@@ -190,6 +191,7 @@ func (test Test) Clone() Test {
 		outputFormat:          test.outputFormat,
 		checks:                test.checks,
 		verboseOutput:         test.verboseOutput,
+		singleTemplate:        test.singleTemplate,
 	}
 }
 
@@ -232,6 +234,12 @@ func (test Test) withVerboseOutput() Test {
 func (test Test) withOutputFormat(outputFormat string) Test {
 	newTest := test.Clone()
 	newTest.outputFormat = outputFormat
+	return newTest
+}
+
+func (test Test) withSingleTemplate(path string) Test {
+	newTest := test.Clone()
+	newTest.singleTemplate = path
 	return newTest
 }
 
@@ -328,6 +336,12 @@ func TestCompareRun(t *testing.T) {
 		defaultTest("SomeDiffs").
 			withVerboseOutput().
 			withChecks(defaultChecks.withPrefixedSuffix("withVebosityFlag")),
+		defaultTest("NoDiffs").
+			withSingleTemplate("reference/deploymentMetrics.yaml").
+			withChecks(defaultChecks.withPrefixedSuffix("withTemplateFlag")),
+		defaultTest("SomeDiffs").
+			withSingleTemplate("reference/deploymentMetrics.yaml").
+			withChecks(defaultChecks.withPrefixedSuffix("withTemplateFlag")),
 		defaultTest("Invalid Resources Are Skipped"),
 		defaultTest("Ref Contains Templates With Function Templates In Same File"),
 	}
@@ -384,6 +398,7 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 		updateTestDiscoveryClient(tf, discoveryResources)
 		setClient(t, resources, tf)
 	}
+
 	switch mode.refSource {
 	case URL:
 		svr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -392,14 +407,22 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 			_, err = fmt.Fprint(w, string(body))
 			require.NoError(t, err)
 		}))
-		require.NoError(t, cmd.Flags().Set("reference", svr.URL+"/"+TestRefConfigFileName))
+		if test.singleTemplate == "" {
+			require.NoError(t, cmd.Flags().Set("reference", svr.URL+"/"+TestRefConfigFileName))
+		} else {
+			require.NoError(t, cmd.Flags().Set("template", svr.URL+"/"+test.singleTemplate))
+		}
 		t.Cleanup(func() {
 			svr.Close()
 		})
 
 	case LocalRef:
 		if !test.leaveTemplateDirEmpty {
-			require.NoError(t, cmd.Flags().Set("reference", path.Join(test.getTestDir(), TestRefConfigFile)))
+			if test.singleTemplate == "" {
+				require.NoError(t, cmd.Flags().Set("reference", path.Join(test.getTestDir(), TestRefConfigFile)))
+			} else {
+				require.NoError(t, cmd.Flags().Set("template", path.Join(test.getTestDir(), test.singleTemplate)))
+			}
 		}
 	}
 	return cmd
