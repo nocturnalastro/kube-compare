@@ -22,14 +22,15 @@ const (
 )
 
 type UserOverride struct {
-	Name       string    `json:"name,omitempty"`
-	ApiVersion string    `json:"apiVersion,omitempty"`
-	Kind       string    `json:"kind,omitempty"`
-	Namespace  string    `json:"namespace,omitempty"`
-	ExactMatch string    `json:"exactMatch,omitempty"`
-	Type       patchType `json:"type"`
-	Patch      string    `json:"patch"`
-	DiffOuput  string    `json:"diffOutput"`
+	Name           string    `json:"name,omitempty"`
+	ApiVersion     string    `json:"apiVersion,omitempty"`
+	Kind           string    `json:"kind,omitempty"`
+	Namespace      string    `json:"namespace,omitempty"`
+	ExactMatch     string    `json:"exactMatch,omitempty"`
+	Type           patchType `json:"type"`
+	Patch          string    `json:"patch"`
+	ReferenceValue string    `json:"referenceValue,omitempty"`
+	ClusterValue   string    `json:"clusterValue,omitempty"`
 }
 
 func (o UserOverride) GetName() string {
@@ -114,7 +115,7 @@ func CreateMergePatch(obj InfoObject, diffOutput string) (*UserOverride, error) 
 	if !ok {
 		return nil, fmt.Errorf("failed to create patch: couldn't type cast type %T to *unstructured.Unstructured", localRef)
 	}
-	localRefData, err := json.Marshal(localRef)
+	localRefData, err := localRef.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal reference CR: %w", err)
 	}
@@ -122,7 +123,7 @@ func CreateMergePatch(obj InfoObject, diffOutput string) (*UserOverride, error) 
 	if !ok {
 		return nil, fmt.Errorf("failed to create patch: couldn't type cast type %T to *unstructured.Unstructured", obj.Live())
 	}
-	clusterCRData, err := json.Marshal(clusterCR)
+	clusterCRData, err := clusterCR.MarshalJSON()
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal cluster CR: %w", err)
 	}
@@ -133,13 +134,14 @@ func CreateMergePatch(obj InfoObject, diffOutput string) (*UserOverride, error) 
 	}
 
 	override := UserOverride{
-		Name:       clusterCR.GetName(),
-		ApiVersion: clusterCR.GetAPIVersion(),
-		Kind:       clusterCR.GetKind(),
-		Namespace:  clusterCR.GetNamespace(),
-		Type:       mergePatch,
-		Patch:      string(patch),
-		DiffOuput:  diffOutput,
+		Name:           clusterCR.GetName(),
+		ApiVersion:     clusterCR.GetAPIVersion(),
+		Kind:           clusterCR.GetKind(),
+		Namespace:      clusterCR.GetNamespace(),
+		Type:           mergePatch,
+		Patch:          string(patch),
+		ReferenceValue: string(localRefData),
+		ClusterValue:   string(clusterCRData),
 	}
 
 	return &override, nil
