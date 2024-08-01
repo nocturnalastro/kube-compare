@@ -2,6 +2,7 @@ package editpatch
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 
 	"github.com/openshift/kube-compare/pkg/compare"
@@ -37,8 +38,17 @@ func (d Diff) Name() string {
 
 func (d *Diff) UpdatePatch(patch string) error {
 	uo := d.patchOrigonal.Clone()
-	uo.Patch = patch
-	_, err := uo.Apply(d.referenceValue)
+	var v map[string]any
+	err := json.Unmarshal([]byte(patch), &v)
+	if err != nil {
+		return err // nolint
+	}
+	p, err := json.Marshal(v)
+	if err != nil {
+		return err // nolint
+	}
+	uo.Patch = string(p)
+	_, err = uo.Apply(d.referenceValue)
 	if err != nil {
 		return err // nolint: wrapcheck
 	}
