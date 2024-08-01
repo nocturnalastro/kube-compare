@@ -40,7 +40,7 @@ func (d *Diff) UpdatePatch(patch string) error {
 	uo.Patch = patch
 	_, err := uo.Apply(d.referenceValue)
 	if err != nil {
-		return err
+		return err // nolint: wrapcheck
 	}
 	d.output = ""
 	d.patch = &uo
@@ -50,6 +50,10 @@ func (d *Diff) UpdatePatch(patch string) error {
 func (d *Diff) ClearPatch() {
 	d.patch = nil
 	d.output = ""
+}
+
+func (d *Diff) IsModified() bool {
+	return d.patch == nil
 }
 
 func (d *Diff) Run() (*bytes.Buffer, error) {
