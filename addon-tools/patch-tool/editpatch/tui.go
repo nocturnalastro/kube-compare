@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/reflow/wordwrap"
 	"github.com/openshift/kube-compare/pkg/compare"
 	"golang.org/x/term"
@@ -18,21 +19,86 @@ import (
 
 const indent = "    "
 
+type data struct {
+	loaded   []*compare.UserOverride
+	accepted []*compare.UserOverride
+	index    int
+	diff     Diff
+}
+
+func (d *data) acceptCurrent() {
+	d.accepted = append(d.accepted, d.getCurrentPatch())
+}
+
+func (d *data) resetPatch() {
+	d.diff.ClearPatch()
+}
+func (d *data) getCurrentPatch() *compare.UserOverride {
+	return d.loaded[d.index]
+}
+
+func (d *data) getPatchValue() string {
+	return d.getCurrentPatch().Patch
+}
+
+func (d data) isPatchModified() bool {
+	return d.diff.patch != nil
+}
+
+func (d data) ViewPatch() string {
+	var prettyJSON bytes.Buffer
+	json.Indent(&prettyJSON, []byte(d.getPatchValue()), "", "    ")
+
+	lines := strings.Split(prettyJSON.String(), "\n")
+
+	var b strings.Builder
+	patchedString := ""
+	if d.isPatchModified() {
+		patchedString = " (modified) "
+	}
+	b.WriteString(fmt.Sprintf("========== Patch%s=======\n", patchedString))
+
+	railFormat := "%" + fmt.Sprintf("-%dd| ", len(fmt.Sprint(len(lines))))
+
+	for i, s := range lines {
+		b.WriteString(fmt.Sprintf(railFormat, i))
+		b.WriteString(fmt.Sprintln(s))
+	}
+	return b.String()
+}
+
+func (d data) ViewDiff() string {
+	var b strings.Builder
+	patchedString := "unpatched"
+	if d.isPatchModified() {
+		patchedString = "patched"
+	}
+	b.WriteString(fmt.Sprintf("========== Diff (%s) =======\n", patchedString))
+	diffOutput, err := d.diff.Run()
+	if err != nil {
+		b.WriteString(fmt.Sprintf("Failed to compute diff: %s\n", err))
+	}
+	if diffOutput.Len() == 0 {
+		b.WriteString("<Nothing>\n")
+	} else {
+		b.Write(diffOutput.Bytes())
+	}
+	return b.String()
+
+}
+
 type model struct {
-	diffs         []*compare.UserOverride
-	currentIndex  int
-	acceptedDiffs []*compare.UserOverride
+	data          data
 	savePath      string
 	editPatchArea textarea.Model
 	err           error
 	showPatch     bool
-	diff          Diff
 	width         int
 	height        int
 }
 
 func initialModel(inputPath, savePath string) (model, error) {
-	diffs, err := compare.LoadUserOverrides(inputPath)
+	loaded, err := compare.LoadUserOverrides(inputPath)
 	if err != nil {
 		return model{}, fmt.Errorf("%w", err)
 	}
@@ -40,9 +106,11 @@ func initialModel(inputPath, savePath string) (model, error) {
 	ti.ShowLineNumbers = true
 
 	m := model{
-		diffs:         diffs,
+		data: data{
+			loaded:   loaded,
+			accepted: []*compare.UserOverride{},
+		},
 		savePath:      savePath,
-		acceptedDiffs: []*compare.UserOverride{},
 		showPatch:     true,
 		editPatchArea: ti,
 	}
@@ -74,7 +142,7 @@ func (m model) saveAndExit() (tea.Model, tea.Cmd) {
 		m.err = err
 		return m, nil
 	}
-	compare.DumpOverrides(m.acceptedDiffs, f)
+	compare.DumpOverrides(m.data.accepted, f)
 	return m, tea.Quit
 }
 
@@ -83,7 +151,7 @@ func (m *model) clearError() {
 }
 
 func (m *model) updateDiff() error {
-	current := m.getCurrent()
+	current := m.data.getCurrentPatch()
 	clusterValue := make(map[string]any)
 	err := json.Unmarshal([]byte(current.ClusterValue), &clusterValue)
 	if err != nil {
@@ -98,29 +166,29 @@ func (m *model) updateDiff() error {
 
 	patch := current.Clone()
 
-	m.diff = Diff{
+	m.data.diff = Diff{
 		clusterValue:   &unstructured.Unstructured{Object: clusterValue},
 		referenceValue: &unstructured.Unstructured{Object: referenceValue},
 		name:           current.Name,
 		patchOrigonal:  &patch,
 		IOStreams:      genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr},
 	}
-	m.diff.Run()
+	m.data.diff.Run()
 	return nil
 }
 
 func (m *model) setIndex(index int) (tea.Model, tea.Cmd) {
-	if index >= len(m.diffs) {
+	if index >= len(m.data.loaded) {
 		return m.saveAndExit()
 	}
-	m.currentIndex = index
+	m.data.index = index
 
 	for m.updateDiff() != nil {
 		index += 1
-		if index >= len(m.diffs) {
+		if index >= len(m.data.loaded) {
 			return m.saveAndExit()
 		}
-		m.currentIndex = index
+		m.data.index = index
 	}
 
 	return m, nil
@@ -142,7 +210,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		if m.editPatchArea.Focused() {
-			m.editPatchArea.SetWidth(msg.Width)
+			m.editPatchArea.SetWidth(msg.Width - 10)
 		}
 		return m, tea.ClearScreen
 	}
@@ -156,7 +224,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			case tea.KeyEsc:
 				if m.editPatchArea.Focused() {
-					err := m.diff.UpdatePatch(m.editPatchArea.Value())
+					err := m.data.diff.UpdatePatch(m.editPatchArea.Value())
 					if err != nil {
 						m.err = err
 					} else {
@@ -170,13 +238,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		initalValue := m.editPatchArea.Value()
 		m.editPatchArea, cmd = m.editPatchArea.Update(msg)
 		if initalValue != m.editPatchArea.Value() {
-			m.diff.UpdatePatch(m.editPatchArea.Value())
+			m.data.diff.UpdatePatch(m.editPatchArea.Value())
 		}
 		return m, cmd
 	}
 
 	switch msg := msg.(type) { // nolint
-		// Is it a key press?
+	// Is it a key press?
 	case tea.KeyMsg:
 		// Cool, what was the actual key pressed?
 		switch msg.String() {
@@ -188,39 +256,36 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Accept current patch
 		case AcceptKey:
 			m.clearError()
-			m.acceptedDiffs = append(m.acceptedDiffs, m.diffs[m.currentIndex])
-			return m.setIndex(m.currentIndex + 1)
+			m.data.acceptCurrent()
+			return m.setIndex(m.data.index + 1)
 		// Drop patch current patch
 		case RejectKey:
 			m.clearError()
-			return m.setIndex(m.currentIndex + 1)
+			return m.setIndex(m.data.index + 1)
 		case ToggleShowPatchKey:
 			m.showPatch = !m.showPatch
 			return m, nil
 		case ResetPatchKey:
 			m.clearError()
-			m.diff.ClearPatch()
+			m.data.resetPatch()
 		// modify patch
 		case EditPatchKey:
 			var prettyJSON bytes.Buffer
-
-			json.Indent(&prettyJSON, []byte(m.diff.GetPatch().Patch), "", indent)
+			json.Indent(&prettyJSON, []byte(m.data.getPatchValue()), "", indent)
 			m.editPatchArea.SetValue(prettyJSON.String())
-			m.editPatchArea.SetCursor(0)
+
 			lines := strings.Split(prettyJSON.String(), "\n")
 			m.editPatchArea.SetHeight(len(lines))
-			m.editPatchArea.SetWidth(m.width)
+			m.editPatchArea.SetWidth(m.width - 10)
 
 			return m, tea.Batch(
 				m.editPatchArea.Focus(),
 				textarea.Blink,
 			)
 		// Save and exit
-		case "x":
+		case saveAndExitKey:
 			m.clearError()
 			return m.saveAndExit()
-		default:
-			return m, nil
 		}
 	}
 
@@ -229,89 +294,56 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func displayPatch(m model) string {
-	var prettyJSON bytes.Buffer
-	json.Indent(&prettyJSON, []byte(m.diff.GetPatch().Patch), "", "    ")
-
-	lines := strings.Split(prettyJSON.String(), "\n")
-
-	var b strings.Builder
-	patchedString := ""
-	if m.diff.patch != nil {
-		patchedString = " (modified) "
-	}
-	b.WriteString(fmt.Sprintf("========== Patch %s=======\n", patchedString))
-
-	railFormat := "%" + fmt.Sprintf("-%dd| ", len(fmt.Sprint(len(lines))))
-
-	for i, s := range lines {
-		b.WriteString(fmt.Sprintf(railFormat, i))
-		b.WriteString(fmt.Sprintln(s))
-	}
-	return b.String()
+func editModeHelp() string {
+	return strings.Join(
+		[]string{
+			"esc) Submit patch",
+			"ctrl+c) quit",
+		},
+		" ",
+	)
 }
 
-func displayDiff(m model) string {
-	var b strings.Builder
-	patchedString := "unpatched"
-	if m.diff.patch != nil {
-		patchedString = "patched"
-	}
-	b.WriteString(fmt.Sprintf("========== Diff (%s) =======\n", patchedString))
-	diffOutput, err := m.diff.Run()
-	if err != nil {
-		b.WriteString(fmt.Sprintf("Failed to compute diff: %s\n", err))
-	}
-	if diffOutput.Len() == 0 {
-		b.WriteString("<Nothing>\n")
-	} else {
-		b.Write(diffOutput.Bytes())
-	}
-	return b.String()
-
+func normalModeHelp() string {
+	return strings.Join(
+		[]string{
+			fmt.Sprintf("%s) quit", QuitKey),
+			fmt.Sprintf("%s) accept patch", AcceptKey),
+			fmt.Sprintf("%s) drop patch", RejectKey),
+			fmt.Sprintf("%s) save and exit", saveAndExitKey),
+			fmt.Sprintf("%s) toggle patch visbility", ToggleShowPatchKey),
+			fmt.Sprintf("%s) edit", EditPatchKey),
+			fmt.Sprintf("%s) reset patch", ResetPatchKey),
+		},
+		" ",
+	)
 }
 
-func (m model) getCurrent() *compare.UserOverride {
-	return m.diffs[m.currentIndex]
-}
+var boxedStyle = lipgloss.NewStyle().BorderStyle(lipgloss.RoundedBorder()).Padding(0, 1).Render
 
 func (m model) View() string {
-	// The header
-	s := "Do you want to keep this patch?\n"
-	s += displayDiff(m)
+	parts := make([]string, 0)
+
+	parts = append(parts,
+		boxedStyle("Do you want to keep this patch?"),
+		boxedStyle(m.data.ViewDiff()),
+	)
+
 	if m.showPatch && !m.editPatchArea.Focused() {
-		s += displayPatch(m)
+		parts = append(parts, boxedStyle(m.data.ViewPatch()))
 	}
 	if m.editPatchArea.Focused() {
-		s += fmt.Sprintf("\n%s\n", m.editPatchArea.View())
+		parts = append(parts, boxedStyle(m.editPatchArea.View()))
 	}
 
-	// // The footer
 	if m.err != nil {
-		s += fmt.Sprintf("Error: %s\n", m.err)
+		parts = append(parts, boxedStyle(fmt.Sprintf("Error: %s\n", m.err)))
 	}
+
 	if !m.editPatchArea.Focused() {
-		s += "\n" + strings.Join(
-			[]string{
-				fmt.Sprintf("%s) quit", QuitKey),
-				fmt.Sprintf("%s) accept patch", AcceptKey),
-				fmt.Sprintf("%s) drop patch", RejectKey),
-				fmt.Sprintf("%s) save and exit", saveAndExitKey),
-				fmt.Sprintf("%s) toggle patch visbility", ToggleShowPatchKey),
-				fmt.Sprintf("%s) edit", EditPatchKey),
-				fmt.Sprintf("%s) reset patch", ResetPatchKey),
-			},
-			" ",
-		)
+		parts = append(parts, boxedStyle(normalModeHelp()))
 	} else {
-		s += "\n" + strings.Join(
-			[]string{
-				"esc) Submit patch",
-				"ctrl+c) quit",
-			},
-			" ",
-		)
-		s += "\nesc) submit patch r) reset ctrl+c) quit"
+		parts = append(parts, boxedStyle(editModeHelp()))
 	}
-	return wordwrap.String(s, m.width)
+	return wordwrap.String(strings.Join(parts, "\n"), m.width)
 }
