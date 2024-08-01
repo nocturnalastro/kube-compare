@@ -41,10 +41,6 @@ func (d *data) getPatchValue() string {
 	return d.getCurrentPatch().Patch
 }
 
-func (d data) isPatchModified() bool {
-	return d.diff.patch != nil
-}
-
 func (d data) ViewPatch() string {
 	var prettyJSON bytes.Buffer
 	json.Indent(&prettyJSON, []byte(d.getPatchValue()), "", "    ")
@@ -53,7 +49,7 @@ func (d data) ViewPatch() string {
 
 	var b strings.Builder
 	patchedString := ""
-	if d.isPatchModified() {
+	if d.diff.IsModified() {
 		patchedString = " (modified) "
 	}
 	b.WriteString(fmt.Sprintf("========== Patch%s=======\n", patchedString))
@@ -70,7 +66,7 @@ func (d data) ViewPatch() string {
 func (d data) ViewDiff() string {
 	var b strings.Builder
 	patchedString := "unpatched"
-	if d.isPatchModified() {
+	if d.diff.IsModified() {
 		patchedString = "patched"
 	}
 	b.WriteString(fmt.Sprintf("========== Diff (%s) =======\n", patchedString))
@@ -204,45 +200,35 @@ const (
 	saveAndExitKey     = "x"
 )
 
-func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m model) UpdateEditMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) { // nolint
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-		if m.editPatchArea.Focused() {
-			m.editPatchArea.SetWidth(msg.Width - 10)
-		}
-		return m, tea.ClearScreen
-	}
 
-	if m.editPatchArea.Focused() {
-		switch msg := msg.(type) { // nolint
-
-		case tea.KeyMsg:
-			switch msg.Type { // nolint
-			case tea.KeyCtrlC:
-				return m, tea.Quit
-			case tea.KeyEsc:
-				if m.editPatchArea.Focused() {
-					err := m.data.diff.UpdatePatch(m.editPatchArea.Value())
-					if err != nil {
-						m.err = err
-					} else {
-						m.editPatchArea.Blur()
-					}
-				}
+	case tea.KeyMsg:
+		switch msg.Type { // nolint
+		case tea.KeyCtrlC:
+			return m, tea.Quit
+		case tea.KeyEsc:
+			err := m.data.diff.UpdatePatch(m.editPatchArea.Value())
+			if err != nil {
+				m.err = err
+			} else {
+				m.editPatchArea.Blur()
 			}
-
+		case tea.KeyCtrlR:
+			m.clearError()
+			m.data.resetPatch()
 		}
-		var cmd tea.Cmd
-		initalValue := m.editPatchArea.Value()
-		m.editPatchArea, cmd = m.editPatchArea.Update(msg)
-		if initalValue != m.editPatchArea.Value() {
-			m.data.diff.UpdatePatch(m.editPatchArea.Value())
-		}
-		return m, cmd
 	}
+	var cmd tea.Cmd
+	initalValue := m.editPatchArea.Value()
+	m.editPatchArea, cmd = m.editPatchArea.Update(msg)
+	if initalValue != m.editPatchArea.Value() {
+		m.data.diff.UpdatePatch(m.editPatchArea.Value())
+	}
+	return m, cmd
+}
 
+func (m model) UdpateNormalMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) { // nolint
 	// Is it a key press?
 	case tea.KeyMsg:
@@ -289,15 +275,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Return the updated model to the Bubble Tea runtime for processing.
-	// Note that we're not returning a command.
 	return m, nil
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) { // nolint
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		if m.editPatchArea.Focused() {
+			m.editPatchArea.SetWidth(msg.Width - 10)
+		}
+		return m, tea.ClearScreen
+	}
+
+	if m.editPatchArea.Focused() {
+		return m.UpdateEditMode(msg)
+	}
+	return m.UdpateNormalMode(msg)
 }
 
 func editModeHelp() string {
 	return strings.Join(
 		[]string{
 			"esc) Submit patch",
+			"ctrl+r) Reset Patch",
 			"ctrl+c) quit",
 		},
 		" ",
