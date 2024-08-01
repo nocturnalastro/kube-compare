@@ -33,6 +33,20 @@ type UserOverride struct {
 	ClusterValue   string    `json:"clusterValue,omitempty"`
 }
 
+func (o UserOverride) Clone() UserOverride {
+	return UserOverride{
+		Name:           o.Name,
+		ApiVersion:     o.ApiVersion,
+		Kind:           o.Kind,
+		Namespace:      o.Namespace,
+		ExactMatch:     o.ExactMatch,
+		Type:           o.Type,
+		Patch:          o.Patch,
+		ReferenceValue: o.ReferenceValue,
+		ClusterValue:   o.ClusterValue,
+	}
+}
+
 func (o UserOverride) GetName() string {
 	return o.Name
 }

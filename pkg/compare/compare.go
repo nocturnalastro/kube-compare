@@ -212,10 +212,10 @@ func NewCmd(f kcmdutil.Factory, streams genericiooptions.IOStreams) *cobra.Comma
 func NewOptions(ioStreams genericiooptions.IOStreams) *Options {
 	return &Options{
 		IOStreams: ioStreams,
-		diff: &diff.DiffProgram{
-			Exec:      exec.New(),
-			IOStreams: ioStreams,
-		},
+		// diff: &diff.DiffProgram{
+		// 	Exec:      exec.New(),
+		// 	IOStreams: ioStreams,
+		// },
 	}
 }
 
@@ -449,7 +449,7 @@ func findAllRequestedSupportedTypes(supportedTypesWithGroups map[string][]string
 	return typesIncludingGroup, notSupportedTypes
 }
 
-func runDiff(obj diff.Object, streams genericiooptions.IOStreams, showManagedFields bool) (*bytes.Buffer, error) {
+func RunDiff(obj diff.Object, streams genericiooptions.IOStreams, showManagedFields bool) (*bytes.Buffer, error) {
 	differ, err := diff.NewDiffer("MERGED", "LIVE")
 	diffOutput := new(bytes.Buffer)
 	if err != nil {
@@ -542,7 +542,7 @@ func (o *Options) Run() error {
 			allowMerge:              temp.Config.AllowMerge,
 			userOverrides:           userOverrides,
 		}
-		diffOutput, err := runDiff(obj, o.IOStreams, o.ShowManagedFields)
+		diffOutput, err := RunDiff(obj, o.IOStreams, o.ShowManagedFields)
 		if err != nil {
 			return err
 		}
