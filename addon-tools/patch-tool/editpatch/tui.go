@@ -190,31 +190,91 @@ func (m *model) setIndex(index int) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-const (
-	AcceptKey          = "a"
-	RejectKey          = "d"
-	QuitKey            = "q"
-	ToggleShowPatchKey = "p"
-	EditPatchKey       = "e"
-	ResetPatchKey      = "r"
-	saveAndExitKey     = "x"
+type Binding struct {
+	Key         string
+	Alt         []string
+	EditModeKey string
+	Description string
+}
+
+func (b Binding) Match(key string) bool {
+	if b.Key == key {
+		return true
+	}
+	for _, k := range b.Alt {
+		if k == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (b Binding) Help(format string) string {
+	return fmt.Sprintf(format, b.Key, b.Description)
+}
+
+var (
+	// Normal mode keys
+	Accept = Binding{
+		Key:         "a",
+		Description: "accept patch",
+	}
+	Reject = Binding{
+		Key:         "d",
+		Description: "drop patch",
+	}
+	Quit = Binding{
+		Key:         "q",
+		Alt:         []string{tea.KeyCtrlC.String()},
+		Description: "quit",
+	}
+	ToggleShowPatch = Binding{
+		Key:         "p",
+		Description: "toggle patch visbility",
+	}
+	EditPatch = Binding{
+		Key:         "e",
+		Description: "edit patch",
+	}
+	ResetPatchNormalNormal = Binding{
+		Key:         "r",
+		Description: "reset patch",
+	}
+	SaveAndExit = Binding{
+		Key:         "x",
+		Description: "save and exit",
+	}
+	// Edit Mode Keys
+	SubmitPatch = Binding{
+		Key:         "esc",
+		Description: "submit patch",
+	}
+	ResetPatchEditMode = Binding{
+		Key:         "ctrl+r",
+		Description: "reset patch",
+	}
+	QuitEditMode = Binding{
+		Key:         tea.KeyCtrlC.String(),
+		Description: "quit",
+	}
 )
 
 func (m model) UpdateEditMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) { // nolint
 
 	case tea.KeyMsg:
-		switch msg.Type { // nolint
-		case tea.KeyCtrlC:
+		key := msg.String()
+		switch { // nolint
+		case QuitEditMode.Match(key):
 			return m, tea.Quit
-		case tea.KeyEsc:
+		case SubmitPatch.Match(key):
 			err := m.data.diff.UpdatePatch(m.editPatchArea.Value())
 			if err != nil {
 				m.err = err
 			} else {
 				m.editPatchArea.Blur()
 			}
-		case tea.KeyCtrlR:
+		case ResetPatchEditMode.Match(key):
 			m.clearError()
 			m.data.resetPatch()
 		}
@@ -230,32 +290,25 @@ func (m model) UpdateEditMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) UdpateNormalMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) { // nolint
-	// Is it a key press?
 	case tea.KeyMsg:
-		// Cool, what was the actual key pressed?
-		switch msg.String() {
-
-		// These keys should exit the program.
-		case "ctrl+c", QuitKey:
+		key := msg.String()
+		switch {
+		case Quit.Match(key):
 			return m, tea.Quit
-
-		// Accept current patch
-		case AcceptKey:
+		case Accept.Match(key):
 			m.clearError()
 			m.data.acceptCurrent()
 			return m.setIndex(m.data.index + 1)
-		// Drop patch current patch
-		case RejectKey:
+		case Reject.Match(key):
 			m.clearError()
 			return m.setIndex(m.data.index + 1)
-		case ToggleShowPatchKey:
+		case ToggleShowPatch.Match(key):
 			m.showPatch = !m.showPatch
 			return m, nil
-		case ResetPatchKey:
+		case ResetPatchNormalNormal.Match(key):
 			m.clearError()
 			m.data.resetPatch()
-		// modify patch
-		case EditPatchKey:
+		case EditPatch.Match(key):
 			var prettyJSON bytes.Buffer
 			json.Indent(&prettyJSON, []byte(m.data.getPatchValue()), "", indent)
 			m.editPatchArea.SetValue(prettyJSON.String())
@@ -268,8 +321,7 @@ func (m model) UdpateNormalMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.editPatchArea.Focus(),
 				textarea.Blink,
 			)
-		// Save and exit
-		case saveAndExitKey:
+		case SaveAndExit.Match(key):
 			m.clearError()
 			return m.saveAndExit()
 		}
@@ -295,33 +347,33 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m.UdpateNormalMode(msg)
 }
 
-func editModeHelp() string {
-	return strings.Join(
-		[]string{
-			"esc) Submit patch",
-			"ctrl+r) Reset Patch",
-			"ctrl+c) quit",
-		},
-		" ",
-	)
-}
+func getHelp(bindings []Binding) string {
+	helpMessageParts := []string{}
+	for _, b := range bindings {
+		helpMessageParts = append(helpMessageParts, b.Help("%s) %s"))
+	}
 
-func normalModeHelp() string {
-	return strings.Join(
-		[]string{
-			fmt.Sprintf("%s) quit", QuitKey),
-			fmt.Sprintf("%s) accept patch", AcceptKey),
-			fmt.Sprintf("%s) drop patch", RejectKey),
-			fmt.Sprintf("%s) save and exit", saveAndExitKey),
-			fmt.Sprintf("%s) toggle patch visbility", ToggleShowPatchKey),
-			fmt.Sprintf("%s) edit", EditPatchKey),
-			fmt.Sprintf("%s) reset patch", ResetPatchKey),
-		},
-		" ",
-	)
+	return strings.Join(helpMessageParts, " ")
 }
 
 var boxedStyle = lipgloss.NewStyle().BorderStyle(lipgloss.RoundedBorder()).Padding(0, 1).Render
+
+var (
+	normalModeBindings = []Binding{
+		Quit,
+		Accept,
+		Reject,
+		SaveAndExit,
+		ToggleShowPatch,
+		EditPatch,
+		ResetPatchNormalNormal,
+	}
+	editModeBindings = []Binding{
+		SubmitPatch,
+		QuitEditMode,
+		ResetPatchEditMode,
+	}
+)
 
 func (m model) View() string {
 	parts := make([]string, 0)
@@ -341,11 +393,10 @@ func (m model) View() string {
 	if m.err != nil {
 		parts = append(parts, boxedStyle(fmt.Sprintf("Error: %s\n", m.err)))
 	}
-
-	if !m.editPatchArea.Focused() {
-		parts = append(parts, boxedStyle(normalModeHelp()))
-	} else {
-		parts = append(parts, boxedStyle(editModeHelp()))
+	bindings := normalModeBindings
+	if m.editPatchArea.Focused() {
+		bindings = editModeBindings
 	}
+	parts = append(parts, boxedStyle(getHelp(bindings)))
 	return wordwrap.String(strings.Join(parts, "\n"), m.width)
 }
