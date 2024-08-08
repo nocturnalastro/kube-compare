@@ -63,7 +63,7 @@ func (d *Diff) ClearPatch() {
 }
 
 func (d *Diff) IsModified() bool {
-	return d.patch == nil
+	return d.patch != nil
 }
 
 func (d *Diff) Run() (*bytes.Buffer, error) {
