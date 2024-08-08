@@ -23,11 +23,11 @@ type data struct {
 	loaded   []*compare.UserOverride
 	accepted []*compare.UserOverride
 	index    int
-	diff     Diff
+	diff     *Diff
 }
 
 func (d *data) acceptCurrent() {
-	d.accepted = append(d.accepted, d.getCurrentPatch())
+	d.accepted = append(d.accepted, d.diff.GetPatch())
 }
 
 func (d *data) resetPatch() {
@@ -38,7 +38,7 @@ func (d *data) getCurrentPatch() *compare.UserOverride {
 }
 
 func (d *data) getPatchValue() string {
-	return d.getCurrentPatch().Patch
+	return d.diff.GetPatch().Patch
 }
 
 func (d data) ViewPatch() string {
@@ -162,7 +162,7 @@ func (m *model) updateDiff() error {
 
 	patch := current.Clone()
 
-	m.data.diff = Diff{
+	m.data.diff = &Diff{
 		clusterValue:   &unstructured.Unstructured{Object: clusterValue},
 		referenceValue: &unstructured.Unstructured{Object: referenceValue},
 		name:           current.Name,
@@ -273,6 +273,7 @@ func (m model) UpdateEditMode(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.err = err
 			} else {
 				m.editPatchArea.Blur()
+
 			}
 		case ResetPatchEditMode.Match(key):
 			m.clearError()
