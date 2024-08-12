@@ -66,13 +66,13 @@ var (
 		command. Users can use external commands with params too, example:
 		KUBECTL_EXTERNAL_DIFF="colordiff -N -u"
 		
-		 By default, the "diff" command available in your path will be run with the "-u"
+		By default, the "diff" command available in your path will be run with the "-u"
 		(unified diff) and "-N" (treat absent files as empty) options.
 		
-		 Exit status: 0 No differences were found. 1 Differences were found. >1 kubectl
+		Exit status: 0 No differences were found. 1 Differences were found. >1 kubectl
 		or diff failed with an error.
 		
-		 Note: KUBECTL_EXTERNAL_DIFF, if used, is expected to follow that convention.
+		Note: KUBECTL_EXTERNAL_DIFF, if used, is expected to follow that convention.
 
 		Experimental: This command is under active development and may change without notice.
 	`)
@@ -118,9 +118,15 @@ type Options struct {
 	ShowManagedFields  bool
 	OutputFormat       string
 
-	builder     *resource.Builder
-	correlator  *MetricsCorrelatorDecorator
-	templates   []*ReferenceTemplate
+	builder             *resource.Builder
+	templatesCorrelator *MetricsCorrelatorDecorator
+	templates           []*ReferenceTemplate
+
+	userOverridesPath       string
+	userOverridesCorrelator Correlator[*UserOverride]
+	userOverrides           []*UserOverride
+	newUserOverridesPath    string
+
 	local       bool
 	types       []string
 	ref         Reference
@@ -182,6 +188,9 @@ func NewCmd(f kcmdutil.Factory, streams genericiooptions.IOStreams) *cobra.Comma
 		"If present, In live mode will try to match all resources that are from the types mentioned in the reference. "+
 			"In local mode will try to match all resources passed to the command")
 	cmd.Flags().BoolVarP(&options.verboseOutput, "verbose", "v", options.verboseOutput, "Increases the verbosity of the tool")
+
+	cmd.Flags().StringVarP(&options.userOverridesPath, "overrides", "p", "", "Path to user overrides")
+	cmd.Flags().StringVar(&options.newUserOverridesPath, "new-overrides", "", "Path to a file of new user overrides")
 
 	cmd.Flags().StringVarP(&options.OutputFormat, "output", "o", "", fmt.Sprintf(`Output format. One of: (%s)`, strings.Join(OutputFormats, ", ")))
 	kcmdutil.CheckErr(cmd.RegisterFlagCompletionFunc(
@@ -262,7 +271,19 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 		return err
 	}
 
+	if o.userOverridesPath != "" {
+		o.userOverrides, err = LoadUserOverrides(o.userOverridesPath)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = o.setupCorrelators()
+	if err != nil {
+		return err
+	}
+
+	err = o.setupOverrideCorrelators()
 	if err != nil {
 		return err
 	}
@@ -281,6 +302,23 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 	return o.setLiveSearchTypes(f)
 }
 
+// These fields are used by the GroupCorrelator who attempts to match templates based on the following priority order:
+// apiVersion_name_namespace_kind. If no single match is found, it proceeds to trying matching by apiVersion_name_kind,
+// then namespace_kind, and finally kind alone.
+//
+// For instance, consider a template resource with fixed apiVersion, name, and kind, but a templated namespace. The
+// correlator will potentially match this template based on its fixed fields: apiVersion_name_kind.
+var defaultFieldGroups = [][][]string{
+	{{"apiVersion"}, {"metadata", "name"}, {"metadata", "namespace"}, {"kind"}},
+	{{"apiVersion"}, {"metadata", "namespace"}, {"kind"}},
+	{{"metadata", "name"}, {"metadata", "namespace"}, {"kind"}},
+	{{"apiVersion"}, {"metadata", "name"}, {"kind"}},
+	{{"metadata", "name"}, {"kind"}},
+	{{"metadata", "namespace"}, {"kind"}},
+	{{"apiVersion"}, {"kind"}},
+	{{"kind"}},
+}
+
 // setupCorrelators initializes a chain of correlators based on the provided options.
 // The correlation chain consists of base correlators wrapped with decorator correlators.
 // This function configures the following base correlators:
@@ -292,7 +330,7 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 // in the specified sequence. The MultiCorrelator is further wrapped with a MetricsCorrelatorDecorator.
 // This decorator not only correlates templates but also records metrics, allowing retrieval that then can be used to create a summary.
 func (o *Options) setupCorrelators() error {
-	var correlators []Correlator
+	var correlators []Correlator[*ReferenceTemplate]
 	if len(o.userConfig.CorrelationSettings.ManualCorrelation.CorrelationPairs) > 0 {
 		manualCorrelator, err := NewExactMatchCorrelator(o.userConfig.CorrelationSettings.ManualCorrelation.CorrelationPairs, o.templates)
 		if err != nil {
@@ -301,23 +339,7 @@ func (o *Options) setupCorrelators() error {
 		correlators = append(correlators, manualCorrelator)
 	}
 
-	// These fields are used by the GroupCorrelator who attempts to match templates based on the following priority order:
-	// apiVersion_name_namespace_kind. If no single match is found, it proceeds to trying matching by apiVersion_name_kind,
-	// then namespace_kind, and finally kind alone.
-	//
-	// For instance, consider a template resource with fixed apiVersion, name, and kind, but a templated namespace. The
-	// correlator will potentially match this template based on its fixed fields: apiVersion_name_kind.
-	var fieldGroups = [][][]string{
-		{{"apiVersion"}, {"metadata", "name"}, {"metadata", "namespace"}, {"kind"}},
-		{{"apiVersion"}, {"metadata", "namespace"}, {"kind"}},
-		{{"metadata", "name"}, {"metadata", "namespace"}, {"kind"}},
-		{{"apiVersion"}, {"metadata", "name"}, {"kind"}},
-		{{"metadata", "name"}, {"kind"}},
-		{{"metadata", "namespace"}, {"kind"}},
-		{{"apiVersion"}, {"kind"}},
-		{{"kind"}},
-	}
-	groupCorrelator, err := NewGroupCorrelator(fieldGroups, o.templates)
+	groupCorrelator, err := NewGroupCorrelator(defaultFieldGroups, o.templates)
 	if err != nil {
 		return err
 	}
@@ -329,7 +351,34 @@ func (o *Options) setupCorrelators() error {
 	if !o.diffAll {
 		errorsToIgnore = []error{UnknownMatch{}}
 	}
-	o.correlator = NewMetricsCorrelatorDecorator(NewMultiCorrelator(correlators), o.ref.Parts, errorsToIgnore)
+	o.templatesCorrelator = NewMetricsCorrelatorDecorator(NewMultiCorrelator(correlators), o.ref.Parts, errorsToIgnore)
+	return nil
+}
+
+func (o *Options) setupOverrideCorrelators() error {
+	extactOverrideMatches := make(map[string]string)
+	for _, uo := range o.userOverrides {
+		if uo.ExactMatch != "" {
+			extactOverrideMatches[uo.ExactMatch] = uo.GetName()
+		}
+	}
+
+	correlators := make([]Correlator[*UserOverride], 0)
+	if len(extactOverrideMatches) > 0 {
+		manualOverrideCorrelator, err := NewExactMatchCorrelator(extactOverrideMatches, o.userOverrides)
+		if err != nil {
+			return err
+		}
+		correlators = append(correlators, manualOverrideCorrelator)
+	}
+
+	groupCorrelator, err := NewGroupCorrelator(defaultFieldGroups, o.userOverrides)
+	if err != nil {
+		return err
+	}
+	correlators = append(correlators, groupCorrelator)
+	o.userOverridesCorrelator = NewMultiCorrelator(correlators)
+
 	return nil
 }
 
@@ -437,6 +486,7 @@ func extractPath(str string, pathIndex int) string {
 // injects, compares, and runs against differ.
 func (o *Options) Run() error {
 	diffs := make([]DiffSum, 0)
+	newUserOverrides := make([]*UserOverride, 0)
 	numDiffCRs := 0
 
 	r := o.builder.
@@ -462,14 +512,14 @@ func (o *Options) Run() error {
 			klog.Warningf(skipInvalidResources, extractPath(err.Error(), 2), err.Error()[strings.LastIndex(err.Error(), ":"):])
 			return true
 		}
-		return containOnly(err, []error{MultipleMatches{}, UnknownMatch{}, MergeError{}})
+		return containOnly(err, []error{MultipleMatches[*ReferenceTemplate]{}, UnknownMatch{}, MergeError{}})
 	})
 
 	err := r.Visit(func(info *resource.Info, _ error) error { // ignoring previous errors
 		clusterCRMapping, _ := runtime.DefaultUnstructuredConverter.ToUnstructured(info.Object)
 		clusterCR := &unstructured.Unstructured{Object: clusterCRMapping}
 
-		temp, err := o.correlator.Match(clusterCR)
+		temp, err := o.templatesCorrelator.Match(clusterCR)
 		if err != nil {
 			return err
 		}
@@ -479,11 +529,18 @@ func (o *Options) Run() error {
 			return err
 		}
 
+		userOverrides, err := o.userOverridesCorrelator.Match(clusterCR)
+		if err != nil && !containOnly(err, []error{UnknownMatch{}}) {
+			return err //nolint: wrapcheck
+		}
+		newUserOverrides = append(newUserOverrides, userOverrides...)
+
 		obj := InfoObject{
 			injectedObjFromTemplate: localRef,
 			clusterObj:              clusterCR,
 			FieldsToOmit:            temp.FieldsToOmit(o.ref.FieldsToOmit),
 			allowMerge:              temp.Config.AllowMerge,
+			userOverrides:           userOverrides,
 		}
 		diffOutput, err := runDiff(obj, o.IOStreams, o.ShowManagedFields)
 		if err != nil {
@@ -491,20 +548,40 @@ func (o *Options) Run() error {
 		}
 		if diffOutput.Len() > 0 {
 			numDiffCRs += 1
+
+			uo, err := CreateMergePatch(obj)
+			if err == nil {
+				newUserOverrides = append(newUserOverrides, uo)
+			}
 		}
 
-		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.Name(), CRName: apiKindNamespaceName(clusterCR)})
+		patched := ""
+		if len(userOverrides) > 0 {
+			patched = o.userOverridesPath
+		}
+		diffs = append(diffs, DiffSum{DiffOutput: diffOutput.String(), CorrelatedTemplate: temp.GetName(), CRName: apiKindNamespaceName(clusterCR), Patched: patched})
 		return err
 	})
 	if err != nil {
 		return fmt.Errorf("error occurred while trying to process resources: %w", err)
 	}
 
-	sum := newSummary(&o.ref, o.correlator, numDiffCRs)
+	sum := newSummary(&o.ref, o.templatesCorrelator, numDiffCRs)
 
 	_, err = Output{Summary: sum, Diffs: &diffs}.Print(o.OutputFormat, o.Out, o.verboseOutput)
 	if err != nil {
 		return err
+	}
+
+	if o.newUserOverridesPath != "" && len(newUserOverrides) > 0 {
+		fw, err := os.Create(o.newUserOverridesPath)
+		if err != nil {
+			return fmt.Errorf("failed to write new overrides file: %w", err)
+		}
+		_, err = DumpOverrides(newUserOverrides, fw)
+		if err != nil {
+			return err
+		}
 	}
 
 	// We will return exit code 1 in case there are differences between the reference CRs and cluster CRs.
@@ -521,6 +598,7 @@ type InfoObject struct {
 	clusterObj              *unstructured.Unstructured
 	FieldsToOmit            []*ManifestPath
 	allowMerge              bool
+	userOverrides           []*UserOverride
 }
 
 // Live Returns the cluster version of the object
@@ -547,6 +625,15 @@ func (obj InfoObject) Merged() (runtime.Object, error) {
 			return obj.injectedObjFromTemplate, &MergeError{obj: &obj, err: err}
 		}
 	}
+
+	for _, override := range obj.userOverrides {
+		patched, err := override.Apply(obj.injectedObjFromTemplate)
+		if err != nil {
+			return obj.injectedObjFromTemplate, err
+		}
+		obj.injectedObjFromTemplate = patched
+	}
+
 	omitFields(obj.injectedObjFromTemplate.Object, obj.FieldsToOmit)
 	return obj.injectedObjFromTemplate, err
 }
@@ -625,6 +712,7 @@ type DiffSum struct {
 	DiffOutput         string `json:"DiffOutput"`
 	CorrelatedTemplate string `json:"CorrelatedTemplate"`
 	CRName             string `json:"CRName"`
+	Patched            string `json:"Patched,omitempty"`
 }
 
 func (s DiffSum) String() string {
@@ -635,7 +723,10 @@ Reference File: {{ .CorrelatedTemplate }}
 Diff Output: {{ .DiffOutput }}
 {{- else }}
 Diff Output: None
-{{ end }}
+{{- end }}
+{{- if ne (len  .Patched) 0 }}
+Patched with {{ .Patched }}
+{{- end }}
 `
 	var buf bytes.Buffer
 	tmpl, _ := template.New("DiffSummary").Parse(t)
@@ -645,6 +736,10 @@ Diff Output: None
 
 func (s DiffSum) HasDiff() bool {
 	return s.DiffOutput != ""
+}
+
+func (s DiffSum) WasPatched() bool {
+	return s.Patched != ""
 }
 
 // Summary Contains all info included in the Summary output of the compare command
@@ -703,7 +798,7 @@ func (o Output) String(showEmptyDiffs bool) string {
 	diffParts := []string{}
 
 	for _, diffSum := range *o.Diffs {
-		if showEmptyDiffs || diffSum.HasDiff() {
+		if showEmptyDiffs || diffSum.HasDiff() || diffSum.WasPatched() {
 			diffParts = append(diffParts, fmt.Sprintln(diffSum.String()))
 		}
 	}

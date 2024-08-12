@@ -101,8 +101,9 @@ func checkFile(t *testing.T, fileName, value string) {
 }
 
 const (
-	defaultOutSuffix = "out.golden"
-	defualtErrSuffix = "err.golden"
+	defaultOutSuffix   = "out.golden"
+	defualtErrSuffix   = "err.golden"
+	defualtPatchSuffix = "userOverrides.golden"
 )
 
 var defaultCheckOut = Check{
@@ -112,6 +113,11 @@ var defaultCheckOut = Check{
 var defaultCheckErr = Check{
 	checkType: matchFile,
 	suffix:    defualtErrSuffix,
+}
+
+var defaultCheckPatch = Check{
+	checkType: matchFile,
+	suffix:    defualtPatchSuffix,
 }
 
 type CRSource string
@@ -143,8 +149,9 @@ func (m *Mode) String() string {
 var DefaultMode = Mode{crSource: Local, refSource: LocalRef}
 
 type Checks struct {
-	Out Check
-	Err Check
+	Out   Check
+	Err   Check
+	Patch Check
 }
 
 // withPrefixedSuffix Calls withPrefixedSuffix on each check
@@ -152,18 +159,21 @@ type Checks struct {
 // set of golden files. see Check.withPrefixedSuffix for defails.
 func (c Checks) withPrefixedSuffix(suffixPrefix string) Checks {
 	return Checks{
-		Out: c.Out.withPrefixedSuffix(suffixPrefix),
-		Err: c.Err.withPrefixedSuffix(suffixPrefix),
+		Out:   c.Out.withPrefixedSuffix(suffixPrefix),
+		Err:   c.Err.withPrefixedSuffix(suffixPrefix),
+		Patch: c.Patch.withPrefixedSuffix(suffixPrefix),
 	}
 }
 
 var defaultChecks = Checks{
-	Out: defaultCheckOut,
-	Err: defaultCheckErr,
+	Out:   defaultCheckOut,
+	Err:   defaultCheckErr,
+	Patch: defaultCheckPatch,
 }
 
 type Test struct {
 	name                  string
+	subTestSuffix         string
 	leaveTemplateDirEmpty bool
 	mode                  []Mode
 	userConfigFileName    string
@@ -171,6 +181,9 @@ type Test struct {
 	outputFormat          string
 	checks                Checks
 	verboseOutput         bool
+	userOverridePath      string
+	newUserOverridePath   string
+	tempDir               string
 }
 
 func (test *Test) getTestDir() string {
@@ -182,6 +195,7 @@ func (test Test) Clone() Test {
 	copy(newMode, test.mode)
 	return Test{
 		name:                  test.name,
+		subTestSuffix:         test.subTestSuffix,
 		leaveTemplateDirEmpty: test.leaveTemplateDirEmpty,
 		mode:                  test.mode,
 		userConfigFileName:    test.userConfigFileName,
@@ -189,7 +203,16 @@ func (test Test) Clone() Test {
 		outputFormat:          test.outputFormat,
 		checks:                test.checks,
 		verboseOutput:         test.verboseOutput,
+		userOverridePath:      test.userOverridePath,
+		newUserOverridePath:   test.newUserOverridePath,
+		tempDir:               test.tempDir,
 	}
+}
+
+func (test Test) withSubTestSuffix(suffix string) Test {
+	newTest := test.Clone()
+	newTest.subTestSuffix = suffix
+	return newTest
 }
 
 func (test Test) withModes(modes []Mode) Test {
@@ -232,6 +255,26 @@ func (test Test) withOutputFormat(outputFormat string) Test {
 	newTest := test.Clone()
 	newTest.outputFormat = outputFormat
 	return newTest
+}
+
+func (test Test) withUserOverridePath(path string) Test {
+	newTest := test.Clone()
+	newTest.userOverridePath = path
+	return newTest
+}
+
+func (test Test) withNewUserOverridePath(path string) Test {
+	newTest := test.Clone()
+	newTest.newUserOverridePath = path
+	return newTest
+}
+
+func (test *Test) subTestName(mode Mode) string {
+	name := test.name
+	if test.subTestSuffix != "" {
+		name += " " + test.subTestSuffix
+	}
+	return name + " " + mode.String()
 }
 
 func defaultTest(name string) Test {
@@ -329,6 +372,17 @@ func TestCompareRun(t *testing.T) {
 			withChecks(defaultChecks.withPrefixedSuffix("withVebosityFlag")),
 		defaultTest("Invalid Resources Are Skipped"),
 		defaultTest("Ref Contains Templates With Function Templates In Same File"),
+		defaultTest("User Override").
+			withSubTestSuffix("Output").
+			withChecks(defaultChecks.withPrefixedSuffix("newOverrides")).
+			withNewUserOverridePath("userOverride.patch"),
+		defaultTest("User Override").
+			withSubTestSuffix("Input").
+			withUserOverridePath("localnewOverridesuserOverrides.golden"),
+		defaultTest("User Override").
+			withSubTestSuffix("Input rfc6902").
+			withChecks(defaultChecks.withPrefixedSuffix("rfc6902")).
+			withUserOverridePath("rfc6902.patch"),
 	}
 
 	tf := cmdtesting.NewTestFactory()
@@ -338,7 +392,7 @@ func TestCompareRun(t *testing.T) {
 	_ = testFlags.Parse([]string{"--skip_headers"})
 	for _, test := range tests {
 		for i, mode := range test.mode {
-			t.Run(test.name+"-"+mode.String(), func(t *testing.T) {
+			t.Run(test.subTestName(mode), func(t *testing.T) {
 				IOStream, _, out, _ := genericiooptions.NewTestIOStreams()
 				klog.SetOutputBySeverity("INFO", out)
 				cmd := getCommand(t, &test, i, tf, &IOStream) // nolint:gosec
@@ -350,6 +404,14 @@ func TestCompareRun(t *testing.T) {
 				defer func() {
 					_ = recover()
 					test.checks.Out.check(t, test, mode, testutils.RemoveInconsistentInfo(t, out.String()))
+					if test.tempDir != "" {
+						defer os.RemoveAll(test.tempDir)
+					}
+					if test.newUserOverridePath != "" {
+						patchFile, err := os.ReadFile(test.newUserOverridePath)
+						require.NoError(t, err)
+						test.checks.Patch.check(t, test, mode, string(patchFile))
+					}
 				}()
 				cmd.Run(cmd, []string{})
 			})
@@ -400,6 +462,19 @@ func getCommand(t *testing.T, test *Test, modeIndex int, tf *cmdtesting.TestFact
 		if !test.leaveTemplateDirEmpty {
 			require.NoError(t, cmd.Flags().Set("reference", path.Join(test.getTestDir(), TestRefConfigFile)))
 		}
+	}
+
+	if test.userOverridePath != "" {
+		require.NoError(t, cmd.Flags().Set("overrides", filepath.Join(test.getTestDir(), test.userOverridePath)))
+	}
+	if test.newUserOverridePath != "" {
+		if test.tempDir == "" {
+			var err error
+			test.tempDir, err = os.MkdirTemp(test.getTestDir(), "patchDir")
+			require.NoError(t, err)
+		}
+		test.newUserOverridePath = filepath.Join(test.tempDir, test.newUserOverridePath)
+		require.NoError(t, cmd.Flags().Set("new-overrides", test.newUserOverridePath))
 	}
 	return cmd
 }

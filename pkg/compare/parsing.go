@@ -132,13 +132,17 @@ func (rf ReferenceTemplate) Exec(params map[string]any) (*unstructured.Unstructu
 	content := buf.Bytes()
 	err = yaml.Unmarshal(bytes.ReplaceAll(content, []byte(noValue), []byte("")), &data)
 	if err != nil {
-		return nil, fmt.Errorf("template: %s isn't a yaml file after injection. yaml unmarshal error: %w. The Template After Execution: %s", rf.Name(), err, string(content))
+		return nil, fmt.Errorf("template: %s isn't a yaml file after injection. yaml unmarshal error: %w. The Template After Execution: %s", rf.GetName(), err, string(content))
 	}
 	return &unstructured.Unstructured{Object: data}, nil
 }
 
-func (rf ReferenceTemplate) Name() string {
+func (rf ReferenceTemplate) GetName() string {
 	return rf.Path
+}
+
+func (rf ReferenceTemplate) GetMetadata() *unstructured.Unstructured {
+	return rf.metadata
 }
 
 func (r *Reference) getTemplates() []*ReferenceTemplate {
