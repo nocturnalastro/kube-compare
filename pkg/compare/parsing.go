@@ -20,6 +20,7 @@ import (
 )
 
 type Reference struct {
+	path                  string
 	Parts                 []Part       `json:"parts"`
 	TemplateFunctionFiles []string     `json:"templateFunctionFiles,omitempty"`
 	FieldsToOmit          FieldsToOmit `json:"fieldsToOmit,omitempty"`
@@ -233,7 +234,7 @@ const (
 )
 
 func getReference(fsys fs.FS, referenceFileName string) (Reference, error) {
-	result := Reference{}
+	result := Reference{path: referenceFileName}
 	err := parseYaml(fsys, referenceFileName, &result, refConfNotExistsError, refConfigNotInFormat)
 	if err != nil {
 		return result, err

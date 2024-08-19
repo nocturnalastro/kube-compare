@@ -21,6 +21,7 @@ Diff Output: diff -u -N TEMP/v1_namespace_openshift-storage TEMP/v1_namespace_op
 **********************************
 
 Summary
+Reference Hash: 39C8043D-DB74C8ED-A12C8D11-4E653576-211679CD-2B4CDC9D-CD275567-EE5CA5A9
 CRs with diffs: 1/1
 No CRs are missing from the cluster
 No CRs are unmatched to reference CRs

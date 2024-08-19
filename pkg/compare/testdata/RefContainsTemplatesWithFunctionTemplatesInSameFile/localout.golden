@@ -17,6 +17,7 @@ Diff Output: diff -u -N TEMP/v1_configmap_kubernetes-dashboard_kubernetes-dashbo
 **********************************
 
 Summary
+Reference Hash: B7B69128-CA46368D-EC0329E4-3A95408D-337B2A1A-84128AB1-14E5C65A-1EA91770
 CRs with diffs: 1/1
 No CRs are missing from the cluster
 No CRs are unmatched to reference CRs

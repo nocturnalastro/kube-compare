@@ -9,6 +9,7 @@ Diffs:
 Summary:
   NumDiffCRs: 1
   NumMissing: 1
+  ReferenceHash: A49FE4FD-EA9BD80C-DA8E0756-CDF32C99-7A4502B1-027E6E31-FD558FB8-952A305B
   RequiredCRS:
     ExamplePart:
       Dashboard:

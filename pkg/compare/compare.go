@@ -118,14 +118,15 @@ type Options struct {
 	ShowManagedFields  bool
 	OutputFormat       string
 
-	builder     *resource.Builder
-	correlator  *MetricsCorrelatorDecorator
-	templates   []*ReferenceTemplate
-	local       bool
-	types       []string
-	ref         Reference
-	userConfig  UserConfig
-	Concurrency int
+	referenceHash string
+	builder       *resource.Builder
+	correlator    *MetricsCorrelatorDecorator
+	templates     []*ReferenceTemplate
+	local         bool
+	types         []string
+	ref           Reference
+	userConfig    UserConfig
+	Concurrency   int
 
 	diff *diff.DiffProgram
 	genericiooptions.IOStreams
@@ -258,6 +259,11 @@ func (o *Options) Complete(f kcmdutil.Factory, cmd *cobra.Command, args []string
 		}
 	}
 	o.templates, err = parseTemplates(o.ref.getTemplates(), o.ref.TemplateFunctionFiles, fs, &o.ref)
+	if err != nil {
+		return err
+	}
+
+	o.referenceHash, err = hashReference(fs, o.ref)
 	if err != nil {
 		return err
 	}
@@ -500,7 +506,7 @@ func (o *Options) Run() error {
 		return fmt.Errorf("error occurred while trying to process resources: %w", err)
 	}
 
-	sum := newSummary(&o.ref, o.correlator, numDiffCRs)
+	sum := newSummary(&o.ref, o.correlator, numDiffCRs, o.referenceHash)
 
 	_, err = Output{Summary: sum, Diffs: &diffs}.Print(o.OutputFormat, o.Out, o.verboseOutput)
 	if err != nil {
@@ -649,15 +655,16 @@ func (s DiffSum) HasDiff() bool {
 
 // Summary Contains all info included in the Summary output of the compare command
 type Summary struct {
-	RequiredCRS  map[string]map[string][]string `json:"RequiredCRS"`
-	NumMissing   int                            `json:"NumMissing"`
-	UnmatchedCRS []string                       `json:"UnmatchedCRS"`
-	NumDiffCRs   int                            `json:"NumDiffCRs"`
-	TotalCRs     int                            `json:"TotalCRs"`
+	RequiredCRS   map[string]map[string][]string `json:"RequiredCRS"`
+	NumMissing    int                            `json:"NumMissing"`
+	UnmatchedCRS  []string                       `json:"UnmatchedCRS"`
+	NumDiffCRs    int                            `json:"NumDiffCRs"`
+	TotalCRs      int                            `json:"TotalCRs"`
+	ReferenceHash string                         `json:""ReferenceHash`
 }
 
-func newSummary(reference *Reference, c *MetricsCorrelatorDecorator, numDiffCRs int) *Summary {
-	s := Summary{NumDiffCRs: numDiffCRs}
+func newSummary(reference *Reference, c *MetricsCorrelatorDecorator, numDiffCRs int, refHash string) *Summary {
+	s := Summary{NumDiffCRs: numDiffCRs, ReferenceHash: refHash}
 	s.RequiredCRS, s.NumMissing = reference.getMissingCRs(c.MatchedTemplatesNames)
 	s.TotalCRs = len(c.MatchedTemplatesNames)
 	s.UnmatchedCRS = lo.Map(c.UnMatchedCRs, func(r *unstructured.Unstructured, i int) string {
@@ -669,6 +676,7 @@ func newSummary(reference *Reference, c *MetricsCorrelatorDecorator, numDiffCRs 
 func (s Summary) String() string {
 	t := `
 Summary
+Reference Hash: {{ .ReferenceHash }}
 CRs with diffs: {{ .NumDiffCRs }}/{{ .TotalCRs }}
 {{- if ne (len  .RequiredCRS) 0 }}
 CRs in reference missing from the cluster: {{.NumMissing}}
