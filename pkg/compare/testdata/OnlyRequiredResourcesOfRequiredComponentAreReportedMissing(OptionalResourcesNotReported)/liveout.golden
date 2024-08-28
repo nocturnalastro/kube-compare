@@ -1,6 +1,6 @@
 Reference Contains Templates With Types (kind) Not Supported By Cluster: ClusterRole, ClusterRoleBinding, ConfigMap, Deployment, Role, RoleBinding, Secret, Service, ServiceAccount
 Summary
-Reference Hash: 78FBDCEA-C98E7178-9A88C264-472D2459-F055C63F-40F9B9B6-12A2BA01-00B60E0E
+Reference Hash: 821B4ECA-8B5600F9-4A550EF9-72321AC1-99DD37C9-DE65E7A1-196E5A12-B6F0A6E2
 CRs with diffs: 0/1
 CRs in reference missing from the cluster: 5
 ExamplePart1:

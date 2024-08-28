@@ -8,20 +8,26 @@ import (
 	"io"
 	"io/fs"
 	"strings"
+
+	"sigs.k8s.io/yaml"
 )
 
 func hashReference(fs fs.FS, ref Reference) (string, error) {
 	hash := sha256.New()
-	err := hashFiles(fs, getReferenceFiles(ref.path, ref), hash)
+	refBytes, err := yaml.Marshal(ref)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash reference: %w", err)
+	}
+	hash.Write(refBytes)
+	err = hashFiles(fs, getReferenceFiles(ref), hash)
 	if err != nil {
 		return "", err
 	}
 	return formatHash(hash), nil
 }
 
-func getReferenceFiles(refPath string, ref Reference) []string {
+func getReferenceFiles(ref Reference) []string {
 	filesToHash := make([]string, 0)
-	filesToHash = append(filesToHash, refPath)
 	filesToHash = append(filesToHash, ref.TemplateFunctionFiles...)
 	for _, t := range ref.getTemplates() {
 		filesToHash = append(filesToHash, t.Path)

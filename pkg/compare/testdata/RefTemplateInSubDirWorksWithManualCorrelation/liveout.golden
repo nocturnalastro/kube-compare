@@ -33,7 +33,7 @@ Diff Output: diff -u -N TEMP/apps-v1_deployment_kubernetes-dashboard_kubernetes-
 **********************************
 
 Summary
-Reference Hash: 620556EE-78892022-287E4B72-2929E15A-533BDC0D-04DEACC7-5A5CF338-DF35B05E
+Reference Hash: F2225D7C-DEBAA408-3168E41E-959F27A9-FD6D2BF2-59514B0B-B91E9D61-834031E9
 CRs with diffs: 1/1
 No CRs are missing from the cluster
 No CRs are unmatched to reference CRs
