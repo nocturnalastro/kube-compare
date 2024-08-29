@@ -481,7 +481,7 @@ func getResources(t *testing.T, resourcesDir string) (map[string][]v1.APIResourc
 			gvk := r.GroupVersionKind()
 			rL[gvk.GroupVersion().String()] = append(
 				rL[gvk.GroupVersion().String()],
-				v1.APIResource{Name: fmt.Sprintf("%ss", strings.ToLower(gvk.Kind)), Group: gvk.Group, Version: gvk.Version, Kind: gvk.Kind},
+				v1.APIResource{Name: fmt.Sprintf("%ss", strings.ToLower(gvk.Kind)), Group: gvk.Group, Version: gvk.Version, Kind: gvk.Kind, Namespaced: len(r.GetNamespace()) > 0},
 			)
 			return nil
 		}))

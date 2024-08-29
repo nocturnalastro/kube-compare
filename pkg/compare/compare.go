@@ -377,7 +377,7 @@ func getSupportedResourceTypes(client discovery.CachedDiscoveryInterface) (map[s
 	for _, list := range lists {
 		if len(list.APIResources) != 0 {
 			for _, res := range list.APIResources {
-				resources[res.Kind] = append(resources[res.Kind], res.Group)
+				resources[res.Kind] = append(resources[res.Kind], "") // res.Group)
 			}
 		}
 	}
