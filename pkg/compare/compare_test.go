@@ -337,7 +337,7 @@ func TestCompareRun(t *testing.T) {
 			withChecks(defaultChecks.withPrefixedSuffix("withVebosityFlag")),
 		defaultTest("Invalid Resources Are Skipped"),
 		defaultTest("Ref Contains Templates With Function Templates In Same File"),
-		defaultTest("Machine Configs Catch All"),
+		defaultTest("Machine Configs Catch All").withModes([]Mode{{Live, LocalRef}, {Local, LocalRef}}),
 	}
 
 	tf := cmdtesting.NewTestFactory()
@@ -456,9 +456,9 @@ func setClient(t *testing.T, resources []*unstructured.Unstructured, tf *cmdtest
 	}
 }
 
-func getResources(t *testing.T, resourcesDir string) ([]v1.APIResource, []*unstructured.Unstructured) {
+func getResources(t *testing.T, resourcesDir string) (map[string][]v1.APIResource, []*unstructured.Unstructured) {
 	var resources []*unstructured.Unstructured
-	var rL []v1.APIResource
+	rL := map[string][]v1.APIResource{}
 	require.NoError(t, filepath.Walk(resourcesDir,
 		func(path string, info os.FileInfo, err error) error {
 			if path == resourcesDir {
@@ -478,16 +478,42 @@ func getResources(t *testing.T, resourcesDir string) ([]v1.APIResource, []*unstr
 			}
 			r := unstructured.Unstructured{Object: data}
 			resources = append(resources, &r)
-			rL = append(rL, v1.APIResource{Name: r.GetName(), Kind: r.GetKind(), Version: r.GetAPIVersion()})
+			gvk := r.GroupVersionKind()
+			rL[gvk.GroupVersion().String()] = append(
+				rL[gvk.GroupVersion().String()],
+				v1.APIResource{Name: fmt.Sprintf("%ss", strings.ToLower(gvk.Kind)), Group: gvk.Group, Version: gvk.Version, Kind: gvk.Kind},
+			)
 			return nil
 		}))
 	return rL, resources
 }
 
-func updateTestDiscoveryClient(tf *cmdtesting.TestFactory, discoveryResources []v1.APIResource) {
+func updateTestDiscoveryClient(tf *cmdtesting.TestFactory, discoveryResources map[string][]v1.APIResource) {
 	discoveryClient := cmdtesting.NewFakeCachedDiscoveryClient()
-	ResourceList := v1.APIResourceList{APIResources: discoveryResources}
-	discoveryClient.Resources = append(discoveryClient.Resources, &ResourceList)
-	discoveryClient.PreferredResources = append(discoveryClient.PreferredResources, &ResourceList)
+	ResourceLists := []*v1.APIResourceList{}
+	for gv, rL := range discoveryResources {
+		ResourceLists = append(ResourceLists, &v1.APIResourceList{
+			GroupVersion: gv,
+			APIResources: rL,
+		})
+	}
+	discoveryClient.Resources = append(discoveryClient.Resources, ResourceLists...)
+	discoveryClient.PreferredResources = append(discoveryClient.PreferredResources, ResourceLists...)
+	groups := []*v1.APIGroup{}
+	for key, rL := range discoveryResources {
+		groups = append(groups, &v1.APIGroup{
+			Name: rL[0].Group,
+			Versions: []v1.GroupVersionForDiscovery{
+				{
+					GroupVersion: key,
+					Version:      rL[0].Version,
+				},
+			},
+		})
+
+	}
+
+	discoveryClient.Groups = groups
 	tf.WithDiscoveryClient(discoveryClient)
+	tf.WithRESTMapper(nil)
 }
