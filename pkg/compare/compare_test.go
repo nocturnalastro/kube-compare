@@ -456,9 +456,9 @@ func setClient(t *testing.T, resources []*unstructured.Unstructured, tf *cmdtest
 	}
 }
 
-func getResources(t *testing.T, resourcesDir string) (map[string][]v1.APIResource, []*unstructured.Unstructured) {
+func getResources(t *testing.T, resourcesDir string) (map[string]map[string]v1.APIResource, []*unstructured.Unstructured) {
 	var resources []*unstructured.Unstructured
-	rL := map[string][]v1.APIResource{}
+	rL := map[string]map[string]v1.APIResource{}
 	require.NoError(t, filepath.Walk(resourcesDir,
 		func(path string, info os.FileInfo, err error) error {
 			if path == resourcesDir {
@@ -479,40 +479,51 @@ func getResources(t *testing.T, resourcesDir string) (map[string][]v1.APIResourc
 			r := unstructured.Unstructured{Object: data}
 			resources = append(resources, &r)
 			gvk := r.GroupVersionKind()
-			rL[gvk.GroupVersion().String()] = append(
-				rL[gvk.GroupVersion().String()],
-				v1.APIResource{
-					Name:  fmt.Sprintf("%ss", strings.ToLower(gvk.Kind)),
-					Group: gvk.Group, Version: gvk.Version,
-					Kind:       gvk.Kind,
-					Namespaced: r.GetNamespace() != "",
-					Verbs:      v1.Verbs{"GET"},
-				},
-			)
+
+			if _, ok := rL[gvk.GroupVersion().String()]; !ok {
+				rL[gvk.GroupVersion().String()] = make(map[string]v1.APIResource)
+			}
+
+			if _, ok := rL[gvk.GroupVersion().String()][gvk.Kind]; ok {
+				return nil
+			}
+
+			rL[gvk.GroupVersion().String()][gvk.Kind] = v1.APIResource{
+				Name:  fmt.Sprintf("%ss", strings.ToLower(gvk.Kind)),
+				Group: gvk.Group, Version: gvk.Version,
+				Kind:       gvk.Kind,
+				Namespaced: r.GetNamespace() != "",
+				Verbs:      v1.Verbs{"GET"},
+			}
 			return nil
 		}))
 	return rL, resources
 }
 
-func updateTestDiscoveryClient(tf *cmdtesting.TestFactory, discoveryResources map[string][]v1.APIResource) {
+func updateTestDiscoveryClient(tf *cmdtesting.TestFactory, discoveryResources map[string]map[string]v1.APIResource) {
 	discoveryClient := cmdtesting.NewFakeCachedDiscoveryClient()
 	ResourceLists := []*v1.APIResourceList{}
-	for gv, rL := range discoveryResources {
+	for gv, byKind := range discoveryResources {
+		resList := []v1.APIResource{}
+		for _, res := range byKind {
+			resList = append(resList, res)
+		}
 		ResourceLists = append(ResourceLists, &v1.APIResourceList{
 			GroupVersion: gv,
-			APIResources: rL,
+			APIResources: resList,
 		})
 	}
 	discoveryClient.Resources = append(discoveryClient.Resources, ResourceLists...)
 	discoveryClient.PreferredResources = append(discoveryClient.PreferredResources, ResourceLists...)
 	groups := []*v1.APIGroup{}
-	for key, rL := range discoveryResources {
+	for _, rL := range ResourceLists {
+		res := rL.APIResources[0]
 		groups = append(groups, &v1.APIGroup{
-			Name: rL[0].Group,
+			Name: res.Group,
 			Versions: []v1.GroupVersionForDiscovery{
 				{
-					GroupVersion: key,
-					Version:      rL[0].Version,
+					GroupVersion: rL.GroupVersion,
+					Version:      res.Version,
 				},
 			},
 		})
