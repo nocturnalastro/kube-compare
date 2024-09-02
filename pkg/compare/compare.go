@@ -369,6 +369,19 @@ func (o *Options) setLiveSearchTypes(f kcmdutil.Factory) error {
 // getSupportedResourceTypes retrieves a set of resource types that are supported by the cluster. For each supported
 // resource type it will specify a list of groups where it exists.
 func getSupportedResourceTypes(client discovery.CachedDiscoveryInterface) (map[string][]string, error) {
+	_, Alllists, err := client.ServerGroupsAndResources()
+	if err != nil {
+		klog.Errorf("Failed to fetch all server groups and resources")
+	} else {
+		for _, list := range Alllists {
+			if len(list.APIResources) != 0 {
+				for _, res := range list.APIResources {
+					klog.Infof("DEBUG: API Resource from All : %v\n", res)
+				}
+			}
+		}
+	}
+
 	resources := make(map[string][]string)
 	lists, err := client.ServerPreferredResources()
 	if err != nil {
@@ -377,6 +390,7 @@ func getSupportedResourceTypes(client discovery.CachedDiscoveryInterface) (map[s
 	for _, list := range lists {
 		if len(list.APIResources) != 0 {
 			for _, res := range list.APIResources {
+				klog.Infof("DEBUG: API Resource which are preffered and used: %v\n", res)
 				resources[res.Kind] = append(resources[res.Kind], fmt.Sprintf("%s.%s", res.Version, res.Group))
 			}
 		}

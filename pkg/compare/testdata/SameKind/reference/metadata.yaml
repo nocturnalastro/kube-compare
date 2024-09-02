@@ -1,0 +1,8 @@
+parts:
+  - name: KindCheck
+    components:
+      - name: Network
+        type: Required
+        requiredTemplates:
+          - path: network.config.yaml
+          # - path: network.operator.yaml

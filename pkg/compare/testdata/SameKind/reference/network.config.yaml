@@ -1,0 +1,36 @@
+---
+apiVersion: config.openshift.io/v1
+kind: Network
+metadata:
+  creationTimestamp: "2024-08-21T14:29:20Z"
+  generation: 5
+  name: cluster
+  resourceVersion: "17708"
+  uid: 62c8aa12-4888-4301-a641-81e0979cf457
+spec:
+  clusterNetwork:
+  - cidr: 10.255.0.0/16
+    hostPrefix: 23
+  externalIP:
+    policy: {}
+  networkDiagnostics:
+    mode: ""
+    sourcePlacement: {}
+    targetPlacement: {}
+  networkType: OVNKubernetes
+  serviceNetwork:
+  - 172.30.0.0/16
+status:
+  clusterNetwork:
+  - cidr: 10.255.0.0/16
+    hostPrefix: 23
+  clusterNetworkMTU: 1400
+  conditions:
+  - lastTransitionTime: "2024-08-21T15:10:42Z"
+    message: No source pods available
+    reason: NoSources
+    status: "False"
+    type: NetworkDiagnosticsAvailable
+  networkType: OVNKubernetes
+  serviceNetwork:
+  - 172.30.0.0/16
