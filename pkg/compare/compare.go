@@ -355,6 +355,9 @@ func (o *Options) setLiveSearchTypes(f kcmdutil.Factory) error {
 	}
 	var notSupportedTypes []string
 	o.types, notSupportedTypes = findAllRequestedSupportedTypes(SupportedTypes, kindSet)
+
+	klog.Infof("DEBUG: TYPES : %v \n", o.types)
+
 	if len(o.types) == 0 {
 		return errors.New(emptyTypes)
 	}
@@ -376,7 +379,7 @@ func getSupportedResourceTypes(client discovery.CachedDiscoveryInterface) (map[s
 		for _, list := range Alllists {
 			if len(list.APIResources) != 0 {
 				for _, res := range list.APIResources {
-					klog.Infof("DEBUG: API Resource from All : %v\n", res)
+					klog.Infof("DEBUG: API Resource from All : %v %s %s %s\n", res, res.Kind, res.Group, res.Version)
 				}
 			}
 		}
@@ -390,7 +393,7 @@ func getSupportedResourceTypes(client discovery.CachedDiscoveryInterface) (map[s
 	for _, list := range lists {
 		if len(list.APIResources) != 0 {
 			for _, res := range list.APIResources {
-				klog.Infof("DEBUG: API Resource which are preffered and used: %v\n", res)
+				klog.Infof("DEBUG: API Resource which are preffered and used: %v %s %s %s\n", res, res.Kind, res.Group, res.Version)
 				resources[res.Kind] = append(resources[res.Kind], fmt.Sprintf("%s.%s", res.Version, res.Group))
 			}
 		}
