@@ -519,8 +519,8 @@ github.com/opencontainers/go-digest v1.0.0 h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8
 github.com/opencontainers/go-digest v1.0.0/go.mod h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=
 github.com/opencontainers/image-spec v1.1.0-rc6 h1:XDqvyKsJEbRtATzkgItUqBA7QHk58yxX1Ov9HERHNqU=
 github.com/opencontainers/image-spec v1.1.0-rc6/go.mod h1:W4s4sFTMaBeK1BQLXbG4AdM2szdn85PY75RI83NrTrM=
-github.com/openshift/kube-compare v0.0.0-20240430053239-48aa7a09d864/go.mod h1:UFv9XqIgG96aFSiHRSYJV/5kGU4LkWq1YHI/O43o2qE=
-github.com/openshift/kube-compare v0.2.0/go.mod h1:4uykk9QkJVdW+bh+aoDhC3jpsbqhEJabnmeHYXGjvBg=
+github.com/nocturnalastro/kube-compare v0.0.0-20240430053239-48aa7a09d864/go.mod h1:UFv9XqIgG96aFSiHRSYJV/5kGU4LkWq1YHI/O43o2qE=
+github.com/nocturnalastro/kube-compare v0.2.0/go.mod h1:4uykk9QkJVdW+bh+aoDhC3jpsbqhEJabnmeHYXGjvBg=
 github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5 h1:Ii+DKncOVM8Cu1Hc+ETb5K+23HdAMvESYE3ZJ5b5cMI=
 github.com/phayes/freeport v0.0.0-20220201140144-74d24b5ae9f5/go.mod h1:iIss55rKnNBTvrwdmkUpLnDpZoAHvWaiq5+iMmen4AE=
 github.com/pierrec/lz4/v4 v4.1.15 h1:MO0/ucJhngq7299dKLwIMtgTfbkoSPF6AoMYDd8Q4q0=

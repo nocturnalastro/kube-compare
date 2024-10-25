@@ -18,7 +18,7 @@ VERSION="$TAG" yq -i '.spec.version = strenv(VERSION)' plugins/cluster-compare.y
 
 # Update artifact hashes
 while read -r checksum filename; do
-    uri="https://github.com/openshift/kube-compare/releases/download/$TAG/$filename"
+    uri="https://github.com/nocturnalastro/kube-compare/releases/download/$TAG/$filename"
     echo "  Updating artifact $uri ($checksum)"
     FILENAME="$filename" URI="$uri" SHA="$checksum" yq -i '(.spec.platforms[] | select(.uri|contains(strenv(FILENAME)))) |= . + {"uri": strenv(URI), "sha256": strenv(SHA)}' plugins/cluster-compare.yaml
 done <<<"$checksums"

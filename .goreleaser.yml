@@ -19,7 +19,7 @@ builds:
       - GO111MODULE=on
     main: cmd/kubectl-cluster_compare.go
     ldflags: -s -w
-      -X github.com/openshift/kube-compare/pkg/version.version=
+      -X github.com/nocturnalastro/kube-compare/pkg/version.version=
   - id: helm-convert
     binary: helm-convert
     goos:
@@ -34,7 +34,7 @@ builds:
       - GO111MODULE=on
     main: addon-tools/helm-convert/helm-convert.go
     ldflags: -s -w
-      -X github.com/openshift/kube-compare/addon-tools/helm-convert/version.version=
+      -X github.com/nocturnalastro/kube-compare/addon-tools/helm-convert/version.version=
   - id: report-creator
     binary: report-creator
     goos:
@@ -49,7 +49,7 @@ builds:
       - GO111MODULE=on
     main: addon-tools/report-creator/create-report.go
     ldflags: -s -w
-      -X github.com/openshift/kube-compare/addon-tools/report-creator/version.version=
+      -X github.com/nocturnalastro/kube-compare/addon-tools/report-creator/version.version=
 archives:
   - id: kube-compare
     builds:

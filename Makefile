@@ -1,6 +1,6 @@
 IMAGE_NAME=kube-compare
 
-PACKAGE_NAME          := github.com/openshift/kube-compare
+PACKAGE_NAME          := github.com/nocturnalastro/kube-compare
 GOLANG_CROSS_VERSION  ?= v1.22.3
 
 # Default values for GOOS and GOARCH

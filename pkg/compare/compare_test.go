@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift/kube-compare/pkg/testutils"
+	"github.com/nocturnalastro/kube-compare/pkg/testutils"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"

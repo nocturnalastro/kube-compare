@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/openshift/kube-compare/addon-tools/report-creator/junit"
-	"github.com/openshift/kube-compare/pkg/compare"
+	"github.com/nocturnalastro/kube-compare/addon-tools/report-creator/junit"
+	"github.com/nocturnalastro/kube-compare/pkg/compare"
 	"github.com/spf13/cobra"
 	"k8s.io/kubectl/pkg/util/templates"
 )

@@ -1,9 +1,13 @@
-module github.com/openshift/kube-compare/addon-tools/report-creator
+module github.com/nocturnalastro/kube-compare/addon-tools/report-creator
 
 go 1.22.0
 
+replace (
+	github.com/nocturnalastro/kube-compare => ../../
+)
+
 require (
-	github.com/openshift/kube-compare v0.2.0
+	github.com/nocturnalastro/kube-compare v0.1.1
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.8.4
 	k8s.io/cli-runtime v0.30.0

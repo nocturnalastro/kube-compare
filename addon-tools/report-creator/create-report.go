@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/openshift/kube-compare/addon-tools/report-creator/report"
+	"github.com/nocturnalastro/kube-compare/addon-tools/report-creator/report"
 )
 
 func main() {

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/openshift/kube-compare/pkg/compare"
+	"github.com/nocturnalastro/kube-compare/pkg/compare"
 	"k8s.io/client-go/util/jsonpath"
 	"k8s.io/kubectl/pkg/cmd/get"
 )

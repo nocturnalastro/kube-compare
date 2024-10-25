@@ -1,4 +1,4 @@
-module github.com/openshift/kube-compare
+module github.com/nocturnalastro/kube-compare
 
 go 1.22.0
 

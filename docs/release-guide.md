@@ -14,7 +14,7 @@ is located in .goreleaser.yml.
    `packages:write`. (run `export GITHUB_TOKEN="<YOUR_TOKEN>"`).
 4. Run `make release`, the command should upload the release to GitHub.
 
-The release notes can be edited manually at any time if needed [here](https://github.com/openshift/kube-compare/releases).
+The release notes can be edited manually at any time if needed [here](https://github.com/nocturnalastro/kube-compare/releases).
 
 ## Krew publication
 

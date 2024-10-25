@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/openshift/kube-compare/pkg/compare"
-	"github.com/openshift/kube-compare/pkg/testutils"
+	"github.com/nocturnalastro/kube-compare/pkg/compare"
+	"github.com/nocturnalastro/kube-compare/pkg/testutils"
 	"github.com/stretchr/testify/require"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	cmdtesting "k8s.io/kubectl/pkg/cmd/testing"

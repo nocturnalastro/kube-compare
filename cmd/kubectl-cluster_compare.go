@@ -5,7 +5,7 @@ package main
 import (
 	"os"
 
-	"github.com/openshift/kube-compare/pkg/compare"
+	"github.com/nocturnalastro/kube-compare/pkg/compare"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	kcmdutil "k8s.io/kubectl/pkg/cmd/util"
